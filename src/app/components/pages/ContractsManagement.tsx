@@ -1,480 +1,399 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
-import { Plus, Search, Eye, FileText, FileSignature } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { 
+  Search, Plus, FileSignature, Loader2, Trash2, ShieldCheck, 
+  Calendar, AlertTriangle, RefreshCcw, Wallet, CheckCircle2, 
+  Clock, DoorOpen, Ban, UserCheck
+} from "lucide-react";
 import { toast } from "sonner";
-
-interface Contract {
-  id: string;
-  contractNumber: string;
-  studentId: string;
-  studentName: string;
-  room: string;
-  startDate: string;
-  endDate: string;
-  monthlyFee: number;
-  deposit: number;
-  status: "active" | "expired" | "terminated";
-  signDate: string;
-  notes: string;
-}
-
-const initialContracts: Contract[] = [
-  { id: "1", contractNumber: "HD001", studentId: "SV001", studentName: "Nguyễn Văn A", room: "A101", startDate: "2026-01-01", endDate: "2026-06-30", monthlyFee: 750000, deposit: 1500000, status: "active", signDate: "2025-12-28", notes: "" },
-  { id: "2", contractNumber: "HD002", studentId: "SV002", studentName: "Trần Thị B", room: "B201", startDate: "2026-01-01", endDate: "2026-06-30", monthlyFee: 750000, deposit: 1500000, status: "active", signDate: "2025-12-29", notes: "" },
-  { id: "3", contractNumber: "HD003", studentId: "SV003", studentName: "Lê Văn C", room: "A102", startDate: "2025-09-01", endDate: "2025-12-31", monthlyFee: 750000, deposit: 1500000, status: "expired", signDate: "2025-08-25", notes: "Đã trả phòng đúng hạn" },
-  { id: "4", contractNumber: "HD004", studentId: "SV004", studentName: "Phạm Thị D", room: "C301", startDate: "2026-01-01", endDate: "2026-06-30", monthlyFee: 750000, deposit: 1500000, status: "active", signDate: "2025-12-30", notes: "" },
-];
+import { apiRequest } from "../../api";
 
 export function ContractsManagement() {
-  const [contracts, setContracts] = useState<Contract[]>(initialContracts);
+  const [contracts, setContracts] = useState<any[]>([]);
+  const [dashboard, setDashboard] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+
   const [formData, setFormData] = useState({
-    contractNumber: "",
+    contractCode: "",
+    studentCode: "",
     studentId: "",
     studentName: "",
-    room: "",
-    startDate: "",
-    endDate: "",
-    monthlyFee: "",
-    deposit: "",
-    notes: "",
+    roomId: "",
+    roomName: "",
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: "", 
+    monthlyFee: 0,
+    inventoryStatus: "Bàn giao: 01 giường, 01 tủ gỗ, 01 bàn học. Điện nước số đầu: 0",
   });
 
-  const filteredContracts = contracts.filter((contract) => {
-    const matchesSearch = 
-      contract.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contract.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contract.contractNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      contract.room.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || contract.status === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
-
-  const stats = {
-    total: contracts.length,
-    active: contracts.filter(c => c.status === "active").length,
-    expired: contracts.filter(c => c.status === "expired").length,
-    totalDeposit: contracts.filter(c => c.status === "active").reduce((sum, c) => sum + c.deposit, 0),
-  };
-
-  const handleAdd = () => {
-    setFormData({
-      contractNumber: "",
-      studentId: "",
-      studentName: "",
-      room: "",
-      startDate: "",
-      endDate: "",
-      monthlyFee: "",
-      deposit: "",
-      notes: "",
-    });
-    setDialogOpen(true);
-  };
-
-  const handleView = (contract: Contract) => {
-    setSelectedContract(contract);
-    setViewDialogOpen(true);
-  };
-
-  const handleTerminate = (id: string) => {
-    setContracts(contracts.map((c) =>
-      c.id === id ? { ...c, status: "terminated" as const } : c
-    ));
-    toast.success("Đã chấm dứt hợp đồng");
-  };
-
-  const handleSave = () => {
-    if (!formData.contractNumber || !formData.studentId || !formData.studentName || !formData.room || !formData.startDate || !formData.endDate) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
+  useEffect(() => {
+    if (dialogOpen) {
+      setFormData(prev => ({
+        ...prev,
+        contractCode: `HD-${new Date().getFullYear()}${Math.floor(1000 + Math.random() * 9000)}`,
+        startDate: new Date().toISOString().split('T')[0]
+      }));
     }
+  }, [dialogOpen]);
 
-    const newContract: Contract = {
-      id: Date.now().toString(),
-      contractNumber: formData.contractNumber,
-      studentId: formData.studentId,
-      studentName: formData.studentName,
-      room: formData.room,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      monthlyFee: parseInt(formData.monthlyFee) || 0,
-      deposit: parseInt(formData.deposit) || 0,
-      status: "active",
-      signDate: new Date().toISOString().split('T')[0],
-      notes: formData.notes,
-    };
-    setContracts([newContract, ...contracts]);
-    toast.success("Đã tạo hợp đồng mới thành công");
-    setDialogOpen(false);
+  useEffect(() => {
+    fetchContracts();
+    fetchDashboard();
+  }, [searchTerm]);
+
+  const fetchContracts = async () => {
+    setLoading(true);
+    try {
+      const data = await apiRequest<any[]>(`/api/ContractApi${searchTerm ? `?searchString=${searchTerm}` : ""}`);
+      setContracts(data);
+    } catch (err) { toast.error("Lỗi tải dữ liệu hợp đồng"); }
+    finally { setLoading(false); }
   };
 
-  const getStatusBadge = (status: Contract["status"]) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-green-100 text-green-800">Đang hiệu lực</Badge>;
-      case "expired":
-        return <Badge className="bg-gray-100 text-gray-800">Hết hạn</Badge>;
-      case "terminated":
-        return <Badge className="bg-red-100 text-red-800">Đã chấm dứt</Badge>;
-    }
+  const fetchDashboard = async () => {
+    try {
+      const data = await apiRequest<any>("/api/ContractApi/dashboard");
+      setDashboard(data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleStartDateChange = (date: string) => {
+    const start = new Date(date);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 6);
+    setFormData({ ...formData, startDate: date, endDate: end.toISOString().split('T')[0] });
+  };
+
+  const handleValidateStudent = async () => {
+    if (!formData.studentCode) return toast.error("Nhập MSSV để kiểm tra");
+    setIsValidating(true);
+    try {
+      const student = await apiRequest<any>(`/api/Student/by-code/${formData.studentCode}`);
+      if (student) {
+        const start = new Date(formData.startDate);
+        const end = new Date(start);
+        end.setMonth(end.getMonth() + 6);
+        
+        setFormData(prev => ({
+          ...prev,
+          studentId: student.id,
+          studentName: student.fullName,
+          roomId: student.roomId,
+          roomName: student.room?.roomName || "Chưa xếp phòng",
+          monthlyFee: student.room?.price || 0,
+          endDate: end.toISOString().split('T')[0]
+        }));
+        toast.success("Xác thực thành công!");
+      }
+    } catch (err) { 
+      toast.error("MSSV không tồn tại hoặc chưa được duyệt phòng"); 
+    } finally { setIsValidating(false); }
+  };
+
+  const handleSave = async () => {
+    if (!formData.studentId) return toast.error("Vui lòng Xác thực sinh viên trước");
+    setLoading(true);
+    try {
+      const payload = {
+        ...formData,
+        deposit: 0,
+        monthlyFee: Number(formData.monthlyFee),
+        totalAmount: Number(formData.monthlyFee) * 6
+      };
+      await apiRequest("/api/ContractApi", { method: "POST", body: JSON.stringify(payload) });
+      toast.success("Ký kết thành công!");
+      setDialogOpen(false);
+      fetchContracts();
+      fetchDashboard();
+    } catch (err: any) { toast.error(err.message || "Lỗi hệ thống"); }
+    finally { setLoading(false); }
+  };
+
+  const handleRenew = async (contract: any) => {
+    if (!confirm(`Gia hạn thêm 06 tháng cho hợp đồng ${contract.contractCode}?`)) return;
+    setLoading(true);
+    try {
+      const currentEnd = new Date(contract.endDate);
+      const newEnd = new Date(currentEnd);
+      newEnd.setMonth(newEnd.getMonth() + 6);
+
+      const payload = {
+        ...contract,
+        endDate: newEnd.toISOString().split('T')[0],
+        note: (contract.note || "") + " | Gia hạn thêm 6 tháng."
+      };
+
+      await apiRequest(`/api/ContractApi/${contract.id}`, { 
+        method: "PUT", 
+        body: JSON.stringify(payload) 
+      });
+      toast.success("Gia hạn thành công!");
+      fetchContracts();
+    } catch (err: any) { toast.error("Lỗi gia hạn: " + err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleTerminate = async (id: number) => {
+    if (!confirm("Xác nhận thanh lý hợp đồng? Hệ thống sẽ giải phóng chỗ ở của sinh viên trên giấy tờ.")) return;
+    setLoading(true);
+    try {
+      await apiRequest(`/api/ContractApi/terminate/${id}`, { method: "POST" });
+      toast.success("Đã thanh lý hợp đồng");
+      fetchContracts();
+      fetchDashboard();
+    } catch (err: any) { toast.error("Lỗi thanh lý: " + err.message); }
+    finally { setLoading(false); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("CẢNH BÁO: Xóa hợp đồng sẽ xóa vĩnh viễn các dữ liệu liên quan. Bạn có chắc chắn?")) return;
+    try {
+      await apiRequest(`/api/ContractApi/${id}`, { method: 'DELETE' });
+      toast.success("Đã xóa vĩnh viễn");
+      fetchContracts();
+      fetchDashboard();
+    } catch (err) { toast.error("Lỗi khi xóa dữ liệu"); }
+  };
+
+  const getStatusBadge = (contract: any) => {
+    const isExpired = new Date(contract.endDate) < new Date();
+    if (contract.status === 0) return <Badge variant="secondary" className="bg-slate-100 text-slate-500 border-slate-200">Đã thanh lý</Badge>;
+    if (isExpired) return <Badge className="bg-red-50 text-red-600 border-red-200 animate-pulse">Quá hạn</Badge>;
+    return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 font-medium">Đang hiệu lực</Badge>;
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6 bg-slate-50/50 min-h-screen font-sans">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Quản lý hợp đồng</h2>
-          <p className="text-gray-500 mt-1">Quản lý hợp đồng thuê phòng ký túc xá</p>
+          <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-indigo-600 rounded-lg text-white"><FileSignature size={24} /></div>
+            Quản lý Hợp đồng & Phí Nội trú
+          </h2>
+          <p className="text-slate-500 text-sm mt-1 ml-11">Kiểm soát thời hạn • Đồng bộ Check-in/out thực tế</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Tạo hợp đồng mới
+        <Button onClick={() => setDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 rounded-xl shadow-md transition-all">
+          <Plus className="mr-2 h-5 w-5" /> Ký hợp đồng mới
         </Button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng hợp đồng</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.total}</p>
-              </div>
-              <FileSignature className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Đang hiệu lực</p>
-                <p className="text-2xl font-semibold text-green-600 mt-2">{stats.active}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Hết hạn</p>
-                <p className="text-2xl font-semibold text-gray-600 mt-2">{stats.expired}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng tiền cọc</p>
-                <p className="text-2xl font-semibold text-blue-600 mt-2">
-                  {(stats.totalDeposit / 1000000).toFixed(1)}M
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <StatCard label="Hợp đồng hiệu lực" value={dashboard?.activeContracts} icon={ShieldCheck} color="indigo" />
+        <StatCard label="Cần gia hạn" value={dashboard?.nearExpiry} icon={Clock} color="amber" />
+        <StatCard label="Tổng tiền đặt cọc" value={`${(dashboard?.totalDeposit || 0).toLocaleString()}đ`} icon={Wallet} color="emerald" />
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Tìm kiếm theo tên, MSSV, số hợp đồng, phòng..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="active">Đang hiệu lực</SelectItem>
-                <SelectItem value="expired">Hết hạn</SelectItem>
-                <SelectItem value="terminated">Đã chấm dứt</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Main Table */}
+      <Card className="border-none shadow-xl rounded-2xl overflow-hidden bg-white">
+        <div className="p-5 border-b flex flex-col md:flex-row justify-between items-center gap-4 bg-white">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input className="pl-10 bg-slate-50 border-slate-200 focus:bg-white transition-all rounded-xl" placeholder="MSSV, Tên sinh viên, Số hợp đồng..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Contracts Table */}
-      <Card>
-        <CardContent className="p-0">
+          <Button variant="outline" onClick={fetchContracts} className="text-slate-600 border-slate-200 hover:bg-slate-50 rounded-xl">
+            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới dữ liệu
+          </Button>
+        </div>
+        
+        <div className="overflow-x-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-slate-50/80">
               <TableRow>
-                <TableHead>Số HĐ</TableHead>
-                <TableHead>Sinh viên</TableHead>
-                <TableHead>MSSV</TableHead>
-                <TableHead>Phòng</TableHead>
-                <TableHead>Bắt đầu</TableHead>
-                <TableHead>Kết thúc</TableHead>
-                <TableHead className="text-right">Phí/tháng</TableHead>
-                <TableHead className="text-right">Cọc</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
+                <TableHead className="font-bold py-4 pl-6 text-slate-600">MÃ HĐ</TableHead>
+                <TableHead className="font-bold text-slate-600">SINH VIÊN & TRẠNG THÁI Ở</TableHead>
+                <TableHead className="font-bold text-slate-600 text-center">THỜI HẠN</TableHead>
+                <TableHead className="font-bold text-slate-600 text-right">TỔNG PHÍ (6T)</TableHead>
+                <TableHead className="font-bold text-slate-600 text-center">TRẠNG THÁI HĐ</TableHead>
+                <TableHead className="text-right pr-6 font-bold text-slate-600">THAO TÁC</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredContracts.map((contract) => (
-                <TableRow key={contract.id}>
-                  <TableCell className="font-medium">{contract.contractNumber}</TableCell>
-                  <TableCell>{contract.studentName}</TableCell>
-                  <TableCell>{contract.studentId}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{contract.room}</Badge>
-                  </TableCell>
-                  <TableCell>{new Date(contract.startDate).toLocaleDateString('vi-VN')}</TableCell>
-                  <TableCell>{new Date(contract.endDate).toLocaleDateString('vi-VN')}</TableCell>
-                  <TableCell className="text-right">{contract.monthlyFee.toLocaleString()}đ</TableCell>
-                  <TableCell className="text-right">{contract.deposit.toLocaleString()}đ</TableCell>
-                  <TableCell>{getStatusBadge(contract.status)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleView(contract)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {contract.status === "active" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600"
-                          onClick={() => handleTerminate(contract.id)}
-                        >
-                          Chấm dứt
+              {contracts.length === 0 && !loading && (
+                <TableRow><TableCell colSpan={6} className="text-center py-10 text-slate-400">Không tìm thấy dữ liệu phù hợp.</TableCell></TableRow>
+              )}
+              {contracts.map((c) => {
+                // LOGIC PHÂN LOẠI TRẠNG THÁI CƯ TRÚ (Dựa trên đồng bộ Backend)
+                const isContractActive = c.status === 1;
+                const studentStatus = c.student?.status; 
+                
+                // QUAN TRỌNG: Kiểm tra checkInDate từ Backend để biết đã từng "Vào phòng" chưa
+                const hasCheckedIn = c.checkInDate !== null && c.checkInDate !== undefined;
+
+                return (
+                  <TableRow key={c.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100">
+                    <TableCell className="pl-6 font-mono font-bold text-indigo-600">{c.contractCode}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-slate-900">{c.student?.fullName || "N/A"}</span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-[10px] uppercase border-slate-200 text-slate-500 font-medium">
+                            {c.room?.roomName || "Chưa rõ"}
+                          </Badge>
+                          
+                          {isContractActive && (
+                            <>
+                              {/* 1. Đang ở thực tế: Có ngày Check-in VÀ Trạng thái SV là active */}
+                              {hasCheckedIn && (studentStatus === "active" || studentStatus === "Đã xếp phòng") && (
+                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 text-[10px] font-medium flex items-center gap-1">
+                                  <UserCheck size={10}/> Đang ở thực tế
+                                </Badge>
+                              )}
+
+                              {/* 2. Đã trả phòng thực tế: Có ngày Check-in NHƯNG Trạng thái SV đã về "Chưa xếp phòng" */}
+                              {hasCheckedIn && studentStatus === "Chưa xếp phòng" && (
+                                <Badge className="bg-amber-50 text-amber-700 border-amber-100 text-[10px] font-medium flex items-center gap-1">
+                                  <DoorOpen size={10}/> Đã trả phòng thực tế
+                                </Badge>
+                              )}
+
+                              {/* 3. Chờ nhận phòng: Chưa hề có ngày Check-in trong Hợp đồng */}
+                              {!hasCheckedIn && (
+                                <Badge className="bg-blue-50 text-blue-600 border-blue-100 text-[10px] font-medium flex items-center gap-1">
+                                  <Clock size={10}/> Chờ nhận phòng
+                                </Badge>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center text-[11px]">
+                      <div className="font-semibold text-slate-700">{new Date(c.startDate).toLocaleDateString('vi-VN')}</div>
+                      <div className="text-slate-400">đến {new Date(c.endDate).toLocaleDateString('vi-VN')}</div>
+                    </TableCell>
+                    <TableCell className="text-right font-black text-slate-800">
+                      {(c.monthlyFee * 6).toLocaleString()}đ
+                    </TableCell>
+                    <TableCell className="text-center">{getStatusBadge(c)}</TableCell>
+                    <TableCell className="text-right pr-6">
+                      <div className="flex justify-end gap-2">
+                        {c.status === 1 && (
+                          <>
+                            <Button 
+                              variant="outline" size="sm" 
+                              className="h-8 border-indigo-200 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                              onClick={() => handleRenew(c)}
+                            >
+                              <RefreshCcw size={14} className="mr-1" /> Gia hạn
+                            </Button>
+                            <Button 
+                              variant="outline" size="sm" 
+                              className="h-8 border-amber-200 text-amber-600 hover:bg-amber-50 rounded-lg"
+                              onClick={() => handleTerminate(c.id)}
+                            >
+                              <Ban size={14} className="mr-1" /> Thanh lý
+                            </Button>
+                          </>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-red-600 transition-colors" onClick={() => handleDelete(c.id)}>
+                          <Trash2 size={16} />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
-        </CardContent>
+        </div>
       </Card>
 
-      {/* Add Dialog */}
+      {/* Dialog Ký HĐ Mới */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Tạo hợp đồng mới</DialogTitle>
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+          <DialogHeader className="p-6 bg-slate-900 text-white">
+            <DialogTitle className="text-xl font-bold flex items-center gap-3">
+              <div className="p-2 bg-indigo-500 rounded-lg"><FileSignature size={20} /></div>
+              Đăng ký cư trú & Ký kết hợp đồng
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="contractNumber">Số hợp đồng *</Label>
-                <Input
-                  id="contractNumber"
-                  value={formData.contractNumber}
-                  onChange={(e) => setFormData({ ...formData, contractNumber: e.target.value })}
-                  placeholder="VD: HD001"
-                />
+
+          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-slate-700">1. Xác thực sinh viên</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="Nhập MSSV cần ký HĐ..." value={formData.studentCode} onChange={e => setFormData({...formData, studentCode: e.target.value})} className="h-11 shadow-sm rounded-xl border-slate-200" />
+                  <Button variant="secondary" onClick={handleValidateStudent} disabled={isValidating} className="h-11 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl px-6">
+                    {isValidating ? <Loader2 className="animate-spin" /> : "Kiểm tra"}
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="room">Phòng *</Label>
-                <Input
-                  id="room"
-                  value={formData.room}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  placeholder="VD: A101"
-                />
+
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
+                <div className="flex justify-between items-center"><span className="text-slate-500 text-sm">Họ tên:</span><span className="font-bold text-slate-800">{formData.studentName || "---"}</span></div>
+                <div className="flex justify-between items-center"><span className="text-slate-500 text-sm">Xếp phòng:</span><Badge className="bg-indigo-500">{formData.roomName || "CHƯA XÁC ĐỊNH"}</Badge></div>
+                <div className="pt-3 border-t border-slate-200 flex justify-between items-center"><span className="text-slate-500 text-sm italic">Tiền phòng tháng:</span><span className="font-bold text-indigo-600">{formData.monthlyFee.toLocaleString()}đ</span></div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="studentId">Mã sinh viên *</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                  placeholder="VD: SV001"
-                />
+
+            <div className="space-y-6 bg-indigo-50/30 p-6 rounded-2xl border border-indigo-100">
+              <Label className="text-sm font-bold text-slate-700 flex items-center gap-2"><Calendar className="text-indigo-600" size={16} /> 2. Thời hạn & Thanh toán</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold text-slate-400">Ngày bắt đầu</Label>
+                  <Input type="date" value={formData.startDate} onChange={e => handleStartDateChange(e.target.value)} className="h-10 bg-white rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold text-slate-400">Ngày kết thúc</Label>
+                  <Input type="date" value={formData.endDate} readOnly className="h-10 bg-slate-100 text-slate-500 cursor-not-allowed rounded-lg" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentName">Họ và tên *</Label>
-                <Input
-                  id="studentName"
-                  value={formData.studentName}
-                  onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                  placeholder="VD: Nguyễn Văn A"
-                />
+              <div className="mt-4 p-5 bg-white rounded-2xl shadow-sm border border-indigo-100">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Thu trọn gói (6 tháng)</p>
+                    <span className="text-2xl font-black text-indigo-600">{(formData.monthlyFee * 6).toLocaleString()}đ</span>
+                  </div>
+                  <Badge variant="secondary" className="mb-1 bg-indigo-50 text-indigo-600 text-[10px]">Tiêu chuẩn</Badge>
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Ngày bắt đầu *</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="endDate">Ngày kết thúc *</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="monthlyFee">Phí thuê/tháng (VNĐ)</Label>
-                <Input
-                  id="monthlyFee"
-                  type="number"
-                  value={formData.monthlyFee}
-                  onChange={(e) => setFormData({ ...formData, monthlyFee: e.target.value })}
-                  placeholder="VD: 750000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="deposit">Tiền cọc (VNĐ)</Label>
-                <Input
-                  id="deposit"
-                  type="number"
-                  value={formData.deposit}
-                  onChange={(e) => setFormData({ ...formData, deposit: e.target.value })}
-                  placeholder="VD: 1500000"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Ghi chú</Label>
-              <Input
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Ghi chú thêm..."
-              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave}>Tạo hợp đồng</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Chi tiết hợp đồng</DialogTitle>
-          </DialogHeader>
-          {selectedContract && (
-            <div className="space-y-4 py-4">
-              <div className="text-center pb-4 border-b">
-                <h3 className="text-xl font-semibold">HỢP ĐỒNG THUÊ PHÒNG KTX</h3>
-                <p className="text-sm text-gray-500 mt-1">Số: {selectedContract.contractNumber}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Sinh viên</p>
-                  <p className="font-medium">{selectedContract.studentName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Mã sinh viên</p>
-                  <p className="font-medium">{selectedContract.studentId}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Phòng</p>
-                  <p className="font-medium">{selectedContract.room}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Trạng thái</p>
-                  {getStatusBadge(selectedContract.status)}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Ngày bắt đầu</p>
-                  <p className="font-medium">{new Date(selectedContract.startDate).toLocaleDateString('vi-VN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Ngày kết thúc</p>
-                  <p className="font-medium">{new Date(selectedContract.endDate).toLocaleDateString('vi-VN')}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Phí thuê/tháng</p>
-                  <p className="font-medium text-blue-600">{selectedContract.monthlyFee.toLocaleString()}đ</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Tiền cọc</p>
-                  <p className="font-medium text-orange-600">{selectedContract.deposit.toLocaleString()}đ</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Ngày ký hợp đồng</p>
-                <p className="font-medium">{new Date(selectedContract.signDate).toLocaleDateString('vi-VN')}</p>
-              </div>
-              {selectedContract.notes && (
-                <div>
-                  <p className="text-sm text-gray-500">Ghi chú</p>
-                  <p className="font-medium">{selectedContract.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setViewDialogOpen(false)}>Đóng</Button>
+          <div className="mx-8 mb-6 bg-amber-50 p-4 rounded-xl border border-amber-100 flex gap-3 text-[11px] text-amber-800 leading-relaxed">
+            <AlertTriangle className="text-amber-600 shrink-0" size={18} />
+            <p>Hợp đồng này có giá trị pháp lý tạm thời. Sau khi xác nhận, hóa đơn học kỳ sẽ được <b>tự động khởi tạo</b>. Nhắc sinh viên hoàn thiện thủ tục bàn giao tài sản để nhận phòng thực tế.</p>
+          </div>
+
+          <DialogFooter className="bg-slate-50 p-6 border-t gap-3">
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="rounded-xl h-11 px-6">Hủy bỏ</Button>
+            <Button onClick={handleSave} disabled={loading} className="bg-slate-900 hover:bg-black text-white h-11 px-10 rounded-xl shadow-lg transition-all">
+              {loading ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" size={18}/>} Ký kết & Tạo hóa đơn
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function StatCard({ label, value, icon: Icon, color }: any) {
+  const colorMap: any = {
+    indigo: "border-indigo-500 text-indigo-600 bg-indigo-50/30",
+    amber: "border-amber-500 text-amber-600 bg-amber-50/30",
+    emerald: "border-emerald-500 text-emerald-600 bg-emerald-50/30",
+  };
+  return (
+    <Card className={`border-none shadow-sm border-l-4 ${colorMap[color]} rounded-2xl overflow-hidden`}>
+      <CardContent className="p-6 flex justify-between items-center bg-white">
+        <div>
+          <p className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-1">{label}</p>
+          <p className="text-2xl font-black text-slate-800">{value || 0}</p>
+        </div>
+        <div className={`p-4 rounded-2xl ${colorMap[color]}`}><Icon size={24} /></div>
+      </CardContent>
+    </Card>
   );
 }

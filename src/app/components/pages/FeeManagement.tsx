@@ -1,510 +1,310 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { useState, useEffect } from "react";
+import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
-import { Plus, Search, DollarSign, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { Search, Plus, RefreshCcw, Trash2, CreditCard, Wallet, CheckCircle2, AlertCircle, Loader2, ReceiptText, History } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Label } from "../ui/label";
 import { toast } from "sonner";
-
-interface FeeRecord {
-  id: string;
-  studentId: string;
-  studentName: string;
-  room: string;
-  month: string;
-  roomFee: number;
-  electricFee: number;
-  waterFee: number;
-  otherFee: number;
-  total: number;
-  status: "paid" | "unpaid" | "overdue";
-  paidDate?: string;
-  dueDate: string;
-}
-
-const initialFees: FeeRecord[] = [
-  { id: "1", studentId: "SV001", studentName: "Nguyễn Văn A", room: "A101", month: "2026-03", roomFee: 750000, electricFee: 120000, waterFee: 80000, otherFee: 50000, total: 1000000, status: "paid", paidDate: "2026-03-05", dueDate: "2026-03-10" },
-  { id: "2", studentId: "SV002", studentName: "Trần Thị B", room: "B201", month: "2026-03", roomFee: 750000, electricFee: 130000, waterFee: 75000, otherFee: 45000, total: 1000000, status: "unpaid", dueDate: "2026-03-10" },
-  { id: "3", studentId: "SV003", studentName: "Lê Văn C", room: "A102", month: "2026-03", roomFee: 750000, electricFee: 110000, waterFee: 70000, otherFee: 70000, total: 1000000, status: "paid", paidDate: "2026-03-08", dueDate: "2026-03-10" },
-  { id: "4", studentId: "SV004", studentName: "Phạm Thị D", room: "C301", month: "2026-03", roomFee: 750000, electricFee: 150000, waterFee: 85000, otherFee: 15000, total: 1000000, status: "unpaid", dueDate: "2026-03-10" },
-  { id: "5", studentId: "SV005", studentName: "Hoàng Văn E", room: "B202", month: "2026-02", roomFee: 1000000, electricFee: 140000, waterFee: 80000, otherFee: 30000, total: 1250000, status: "overdue", dueDate: "2026-02-10" },
-];
+import { apiRequest } from "../../api";
 
 export function FeeManagement() {
-  const [fees, setFees] = useState<FeeRecord[]>(initialFees);
+  const [invoices, setInvoices] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterMonth, setFilterMonth] = useState<string>("all");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [selectedFee, setSelectedFee] = useState<FeeRecord | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [filterStatus, setFilterStatus] = useState("all");
+
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [formData, setFormData] = useState({
-    studentId: "",
+    studentCode: "",
+    studentId: 0,
     studentName: "",
-    room: "",
-    month: "",
-    roomFee: "",
-    electricFee: "",
-    waterFee: "",
-    otherFee: "",
-    dueDate: "",
+    roomName: "",
+    roomId: 0,
+    reason: "",
+    amount: 0,
+    dueDate: new Date().toISOString().split('T')[0]
   });
 
-  const filteredFees = fees.filter((fee) => {
-    const matchesSearch = 
-      fee.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      fee.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      fee.room.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || fee.status === filterStatus;
-    const matchesMonth = filterMonth === "all" || fee.month === filterMonth;
-    return matchesSearch && matchesStatus && matchesMonth;
-  });
+  useEffect(() => {
+    fetchInvoices();
+  }, [filterStatus, searchTerm]);
 
-  const stats = {
-    totalRevenue: fees.filter(f => f.status === "paid").reduce((sum, f) => sum + f.total, 0),
-    unpaidCount: fees.filter(f => f.status === "unpaid").length,
-    overdueCount: fees.filter(f => f.status === "overdue").length,
-    paidCount: fees.filter(f => f.status === "paid").length,
-  };
+  const fetchInvoices = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchTerm) params.append("searchString", searchTerm);
+      if (filterStatus !== "all") params.append("statusFilter", filterStatus);
 
-  const handleAdd = () => {
-    setFormData({
-      studentId: "",
-      studentName: "",
-      room: "",
-      month: "",
-      roomFee: "",
-      electricFee: "",
-      waterFee: "",
-      otherFee: "",
-      dueDate: "",
-    });
-    setDialogOpen(true);
-  };
-
-  const handleMarkAsPaid = (fee: FeeRecord) => {
-    setSelectedFee(fee);
-    setPaymentDialogOpen(true);
-  };
-
-  const confirmPayment = () => {
-    if (selectedFee) {
-      setFees(fees.map((fee) =>
-        fee.id === selectedFee.id
-          ? { ...fee, status: "paid" as const, paidDate: new Date().toISOString().split('T')[0] }
-          : fee
-      ));
-      toast.success("Đã xác nhận thanh toán thành công");
-      setPaymentDialogOpen(false);
-      setSelectedFee(null);
+      const data = await apiRequest<any[]>(`/api/InvoiceApi?${params.toString()}`);
+      setInvoices(data);
+    } catch (err) {
+      toast.error("Không thể tải danh sách hóa đơn");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSave = () => {
-    if (!formData.studentId || !formData.studentName || !formData.room || !formData.month) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
-    }
-
-    const roomFee = parseInt(formData.roomFee) || 0;
-    const electricFee = parseInt(formData.electricFee) || 0;
-    const waterFee = parseInt(formData.waterFee) || 0;
-    const otherFee = parseInt(formData.otherFee) || 0;
-    const total = roomFee + electricFee + waterFee + otherFee;
-
-    const newFee: FeeRecord = {
-      id: Date.now().toString(),
-      studentId: formData.studentId,
-      studentName: formData.studentName,
-      room: formData.room,
-      month: formData.month,
-      roomFee,
-      electricFee,
-      waterFee,
-      otherFee,
-      total,
-      status: "unpaid",
-      dueDate: formData.dueDate,
-    };
-
-    setFees([newFee, ...fees]);
-    toast.success("Đã tạo phiếu thu mới thành công");
-    setDialogOpen(false);
+  const handleCheckStudent = async () => {
+    if (!formData.studentCode) return toast.error("Vui lòng nhập MSSV");
+    setIsValidating(true);
+    try {
+      const student = await apiRequest<any>(`/api/Student/by-code/${formData.studentCode}`);
+      if (student) {
+        setFormData(prev => ({
+          ...prev,
+          studentId: student.id,
+          studentName: student.fullName,
+          roomId: student.roomId,
+          roomName: student.room?.roomName || "N/A"
+        }));
+        toast.success("Đã xác nhận sinh viên");
+      }
+    } catch (err) {
+      toast.error("MSSV không tồn tại hoặc chưa được duyệt phòng");
+    } finally { setIsValidating(false); }
   };
 
-  const getStatusBadge = (status: FeeRecord["status"]) => {
-    switch (status) {
-      case "paid":
-        return <Badge className="bg-green-100 text-green-800">Đã thanh toán</Badge>;
-      case "unpaid":
-        return <Badge className="bg-yellow-100 text-yellow-800">Chưa thanh toán</Badge>;
-      case "overdue":
-        return <Badge className="bg-red-100 text-red-800">Quá hạn</Badge>;
+  // --- PHẦN SỬA CHÍNH TẠI ĐÂY ---
+  const handleCreateExtraInvoice = async () => {
+    if (!formData.studentId || formData.amount <= 0) {
+      return toast.error("Kiểm tra lại số tiền và thông tin sinh viên");
     }
+
+    setIsSubmitting(true);
+    const now = new Date();
+    
+    try {
+      // Ép kiểu dữ liệu để Backend nhận diện chính xác các trường Decimal
+      const payload = {
+        studentId: Number(formData.studentId),
+        roomId: Number(formData.roomId),
+        description: formData.reason || "Phí phát sinh ngoài hợp đồng",
+        totalAmount: Number(formData.amount), // Đảm bảo là kiểu số
+        roomFee: Number(formData.amount),    // Gán vào đây để Backend gán TotalAmount từ RoomFee
+        utilityFee: 0,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        dueDate: new Date(formData.dueDate).toISOString(),
+        status: "Chưa thanh toán"
+      };
+
+      await apiRequest("/api/InvoiceApi", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+
+      toast.success("Đã lập hóa đơn thành công!");
+      setIsAddOpen(false);
+      fetchInvoices();
+      
+      // Reset form sạch sẽ
+      setFormData({ 
+        studentCode: "", 
+        studentId: 0, 
+        studentName: "", 
+        roomName: "", 
+        roomId: 0, 
+        reason: "", 
+        amount: 0, 
+        dueDate: new Date().toISOString().split('T')[0] 
+      });
+    } catch (err) {
+      toast.error("Lỗi khi tạo hóa đơn. Vui lòng thử lại.");
+    } finally { setIsSubmitting(false); }
+  };
+
+  const handleConfirmPayment = async (id: number) => {
+    try {
+      await apiRequest(`/api/InvoiceApi/confirm-payment/${id}`, { method: "POST" });
+      toast.success("Đã xác nhận nộp tiền!");
+      fetchInvoices();
+    } catch (err) { toast.error("Lỗi cập nhật"); }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Xóa hóa đơn này sẽ ảnh hưởng đến báo cáo tài chính. Bạn có chắc chắn?")) return;
+    try {
+      await apiRequest(`/api/InvoiceApi/${id}`, { method: "DELETE" });
+      toast.success("Đã xóa hóa đơn");
+      fetchInvoices();
+    } catch (err) { toast.error("Không thể xóa"); }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Quản lý phí</h2>
-          <p className="text-gray-500 mt-1">Quản lý thu chi và thanh toán</p>
+    <div className="space-y-6 p-6 bg-slate-50/50 min-h-screen">
+      {/* Banner & Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200 gap-4">
+        <div className="flex gap-4 items-center">
+          <div className="p-3 bg-emerald-100 text-emerald-700 rounded-xl">
+            <Wallet size={28} />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Kế toán & Lệ phí</h2>
+            <p className="text-slate-500 text-sm">Quản lý thu tiền phòng và phí dịch vụ phát sinh</p>
+          </div>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Tạo phiếu thu mới
-        </Button>
+        <div className="flex gap-2 w-full md:w-auto">
+          <Button variant="outline" onClick={fetchInvoices} className="flex-1 md:flex-none border-slate-200">
+            <RefreshCcw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Làm mới
+          </Button>
+          <Button onClick={() => setIsAddOpen(true)} className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 shadow-lg">
+            <Plus className="mr-2 h-4 w-4" /> Lập hóa đơn lẻ
+          </Button>
+        </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng doanh thu</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">
-                  {stats.totalRevenue.toLocaleString()}đ
-                </p>
-              </div>
-              <div className="p-3 rounded-lg bg-green-100">
-                <DollarSign className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Tìm kiếm & Tabs lọc */}
+      <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input 
+            className="pl-10 bg-white h-11 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500" 
+            placeholder="Tìm MSSV hoặc tên sinh viên..." 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+          />
+        </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Đã thanh toán</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.paidCount}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-blue-100">
-                <CheckCircle2 className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Chưa thanh toán</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.unpaidCount}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-yellow-100">
-                <AlertCircle className="h-6 w-6 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Quá hạn</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.overdueCount}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-red-100">
-                <AlertCircle className="h-6 w-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex bg-slate-200/50 p-1 rounded-xl border border-slate-200">
+            {[
+              { id: "all", label: "TẤT CẢ", icon: History },
+              { id: "Chưa thanh toán", label: "CHỜ THU", icon: AlertCircle },
+              { id: "Đã thanh toán", label: "HOÀN TẤT", icon: CheckCircle2 }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFilterStatus(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  filterStatus === tab.id ? `bg-white text-indigo-600 shadow-sm` : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <tab.icon size={14} />
+                {tab.label}
+              </button>
+            ))}
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Tìm kiếm theo tên, MSSV, phòng..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterMonth} onValueChange={setFilterMonth}>
-              <SelectTrigger>
-                <SelectValue placeholder="Tháng" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả tháng</SelectItem>
-                <SelectItem value="2026-03">Tháng 3/2026</SelectItem>
-                <SelectItem value="2026-02">Tháng 2/2026</SelectItem>
-                <SelectItem value="2026-01">Tháng 1/2026</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                <SelectItem value="paid">Đã thanh toán</SelectItem>
-                <SelectItem value="unpaid">Chưa thanh toán</SelectItem>
-                <SelectItem value="overdue">Quá hạn</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Fees Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>MSSV</TableHead>
-                <TableHead>Họ và tên</TableHead>
-                <TableHead>Phòng</TableHead>
-                <TableHead>Tháng</TableHead>
-                <TableHead className="text-right">Phí phòng</TableHead>
-                <TableHead className="text-right">Điện/Nước/Khác</TableHead>
-                <TableHead className="text-right">Tổng cộng</TableHead>
-                <TableHead>Hạn thanh toán</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredFees.map((fee) => (
-                <TableRow key={fee.id}>
-                  <TableCell className="font-medium">{fee.studentId}</TableCell>
-                  <TableCell>{fee.studentName}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{fee.room}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    {new Date(fee.month + "-01").toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}
-                  </TableCell>
-                  <TableCell className="text-right">{fee.roomFee.toLocaleString()}đ</TableCell>
-                  <TableCell className="text-right text-sm text-gray-500">
-                    {(fee.electricFee + fee.waterFee + fee.otherFee).toLocaleString()}đ
-                  </TableCell>
-                  <TableCell className="text-right font-medium">{fee.total.toLocaleString()}đ</TableCell>
-                  <TableCell>
-                    {new Date(fee.dueDate).toLocaleDateString('vi-VN')}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(fee.status)}</TableCell>
-                  <TableCell className="text-right">
-                    {fee.status !== "paid" && (
-                      <Button
-                        size="sm"
-                        onClick={() => handleMarkAsPaid(fee)}
-                      >
-                        Xác nhận thanh toán
+      {/* Bảng danh sách */}
+      <Card className="border-none shadow-xl rounded-2xl overflow-hidden bg-white">
+        <Table>
+          <TableHeader className="bg-slate-50/50">
+            <TableRow>
+              <TableHead className="font-bold py-5 pl-6">SINH VIÊN & PHÒNG</TableHead>
+              <TableHead className="font-bold">NỘI DUNG THANH TOÁN</TableHead>
+              <TableHead className="font-bold text-right">SỐ TIỀN</TableHead>
+              <TableHead className="font-bold text-center">TRẠNG THÁI</TableHead>
+              <TableHead className="text-right font-bold pr-6">THAO TÁC</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-24"><Loader2 className="animate-spin mx-auto h-10 w-10 text-indigo-400" /></TableCell></TableRow>
+            ) : invoices.length === 0 ? (
+                <TableRow><TableCell colSpan={5} className="text-center py-24 text-slate-400">Không có dữ liệu hóa đơn</TableCell></TableRow>
+            ) : invoices.map((inv) => (
+              <TableRow key={inv.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50">
+                <TableCell className="pl-6">
+                  <div className="flex flex-col">
+                    <span className="font-bold text-slate-900">{inv.student?.fullName}</span>
+                    <span className="text-[11px] font-mono text-indigo-600 font-semibold">{inv.student?.studentCode} • {inv.room?.roomName}</span>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${inv.description?.includes("phát sinh") ? 'bg-amber-50 text-amber-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                        <ReceiptText size={16} />
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-slate-700">{inv.description || "Hóa đơn dịch vụ"}</span>
+                        <span className="text-[10px] text-slate-400 font-medium italic">Hạn: {new Date(inv.dueDate).toLocaleDateString('vi-VN')}</span>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">
+                  <span className="text-base font-black text-slate-800">{inv.totalAmount?.toLocaleString('vi-VN')}₫</span>
+                </TableCell>
+                <TableCell className="text-center">
+                  <Badge className={`px-3 py-1 rounded-full border-none font-bold text-[10px] ${
+                    inv.status === "Đã thanh toán" ? "bg-emerald-100 text-emerald-700" : "bg-orange-100 text-orange-700"
+                  }`}>
+                    {inv.status === "Đã thanh toán" ? "ĐÃ THU TIỀN" : "CHƯA THANH TOÁN"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right pr-6">
+                  <div className="flex justify-end gap-2">
+                    {inv.status !== "Đã thanh toán" ? (
+                      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 h-8" onClick={() => handleConfirmPayment(inv.id)}>
+                        <CreditCard className="h-3.5 w-3.5 mr-1.5" /> Thu tiền
                       </Button>
+                    ) : (
+                      <div className="flex items-center text-emerald-600 font-black text-xs px-2 h-8">
+                        <CheckCircle2 className="h-4 w-4 mr-1.5" /> HOÀN TẤT
+                      </div>
                     )}
-                    {fee.status === "paid" && (
-                      <span className="text-sm text-gray-500">
-                        {fee.paidDate && new Date(fee.paidDate).toLocaleDateString('vi-VN')}
-                      </span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-300 hover:text-red-500" onClick={() => handleDelete(inv.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </Card>
 
-      {/* Add Fee Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+      {/* Dialog tạo hóa đơn lẻ */}
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="sm:max-w-[450px] rounded-3xl">
           <DialogHeader>
-            <DialogTitle>Tạo phiếu thu mới</DialogTitle>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                <ReceiptText className="text-indigo-600" /> Lập hóa đơn mới
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-5 py-4">
+            <div className="space-y-2">
+              <Label className="text-[11px] font-bold text-slate-500 uppercase">1. MSSV cần lập hóa đơn</Label>
+              <div className="flex gap-2">
+                <Input placeholder="Nhập MSSV..." value={formData.studentCode} onChange={e => setFormData({...formData, studentCode: e.target.value})} />
+                <Button variant="secondary" onClick={handleCheckStudent} disabled={isValidating}>
+                    {isValidating ? <Loader2 className="animate-spin h-4 w-4" /> : "Kiểm tra"}
+                </Button>
+              </div>
+            </div>
+
+            {formData.studentName && (
+              <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                <div className="flex justify-between text-sm mb-1"><span className="text-slate-400">Họ tên:</span><span className="font-bold">{formData.studentName}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-400">Phòng:</span><Badge variant="outline">{formData.roomName}</Badge></div>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label className="text-[11px] font-bold text-slate-500 uppercase">2. Nội dung & Lý do</Label>
+              <Input placeholder="VD: Tiền phòng trọn kỳ, Tiền phạt..." value={formData.reason} onChange={e => setFormData({...formData, reason: e.target.value})} />
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="studentId">Mã sinh viên *</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                  placeholder="VD: SV001"
-                />
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Số tiền (VNĐ)</Label>
+                <Input type="number" value={formData.amount} onChange={e => setFormData({...formData, amount: Number(e.target.value)})} className="text-indigo-600 font-bold" />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="studentName">Họ và tên *</Label>
-                <Input
-                  id="studentName"
-                  value={formData.studentName}
-                  onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                  placeholder="VD: Nguyễn Văn A"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="room">Phòng *</Label>
-                <Input
-                  id="room"
-                  value={formData.room}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  placeholder="VD: A101"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="month">Tháng *</Label>
-                <Input
-                  id="month"
-                  type="month"
-                  value={formData.month}
-                  onChange={(e) => setFormData({ ...formData, month: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="dueDate">Hạn thanh toán *</Label>
-                <Input
-                  id="dueDate"
-                  type="date"
-                  value={formData.dueDate}
-                  onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="roomFee">Phí phòng (VNĐ) *</Label>
-                <Input
-                  id="roomFee"
-                  type="number"
-                  value={formData.roomFee}
-                  onChange={(e) => setFormData({ ...formData, roomFee: e.target.value })}
-                  placeholder="VD: 750000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="electricFee">Phí điện (VNĐ)</Label>
-                <Input
-                  id="electricFee"
-                  type="number"
-                  value={formData.electricFee}
-                  onChange={(e) => setFormData({ ...formData, electricFee: e.target.value })}
-                  placeholder="VD: 120000"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="waterFee">Phí nước (VNĐ)</Label>
-                <Input
-                  id="waterFee"
-                  type="number"
-                  value={formData.waterFee}
-                  onChange={(e) => setFormData({ ...formData, waterFee: e.target.value })}
-                  placeholder="VD: 80000"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="otherFee">Phí khác (VNĐ)</Label>
-                <Input
-                  id="otherFee"
-                  type="number"
-                  value={formData.otherFee}
-                  onChange={(e) => setFormData({ ...formData, otherFee: e.target.value })}
-                  placeholder="VD: 50000"
-                />
-              </div>
-            </div>
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Tổng cộng:</span>
-                <span className="text-xl font-semibold text-blue-600">
-                  {(
-                    (parseInt(formData.roomFee) || 0) +
-                    (parseInt(formData.electricFee) || 0) +
-                    (parseInt(formData.waterFee) || 0) +
-                    (parseInt(formData.otherFee) || 0)
-                  ).toLocaleString()}đ
-                </span>
+                <Label className="text-[11px] font-bold text-slate-500 uppercase">Hạn thanh toán</Label>
+                <Input type="date" value={formData.dueDate} onChange={e => setFormData({...formData, dueDate: e.target.value})} />
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave}>Tạo phiếu thu</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Payment Confirmation Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Xác nhận thanh toán</DialogTitle>
-          </DialogHeader>
-          {selectedFee && (
-            <div className="space-y-4 py-4">
-              <p>Xác nhận đã nhận thanh toán từ:</p>
-              <div className="p-4 bg-gray-50 rounded-lg space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sinh viên:</span>
-                  <span className="font-medium">{selectedFee.studentName}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">MSSV:</span>
-                  <span className="font-medium">{selectedFee.studentId}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Phòng:</span>
-                  <span className="font-medium">{selectedFee.room}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tháng:</span>
-                  <span className="font-medium">
-                    {new Date(selectedFee.month + "-01").toLocaleDateString('vi-VN', { month: 'long', year: 'numeric' })}
-                  </span>
-                </div>
-                <div className="flex justify-between pt-2 border-t">
-                  <span className="font-medium">Số tiền:</span>
-                  <span className="text-xl font-semibold text-green-600">
-                    {selectedFee.total.toLocaleString()}đ
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={confirmPayment} className="bg-green-600 hover:bg-green-700">
-              Xác nhận thanh toán
+            <Button variant="ghost" onClick={() => setIsAddOpen(false)}>Hủy</Button>
+            <Button className="bg-indigo-600 h-11 px-8 shadow-lg" onClick={handleCreateExtraInvoice} disabled={isSubmitting || !formData.studentId}>
+              {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : "Xác nhận lập hóa đơn"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -26,379 +26,410 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { Plus, Search, Edit, Trash2, UsersRound, User } from "lucide-react";
+import { Plus, Edit, Trash2, Search, Filter, RefreshCcw, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest } from "../../api";
 
+// Cấu trúc dữ liệu chuẩn cho Frontend
 interface Staff {
   id: string;
-  staffId: string;
+  staffId: string; // Mã NV (NV001...)
   fullName: string;
   position: string;
   department: string;
   phone: string;
   email: string;
   startDate: string;
-  status: "active" | "inactive";
+  status: number;
+  departmentId: number;
+  roleId: number;
 }
 
-const initialStaff: Staff[] = [
-  { id: "1", staffId: "NV001", fullName: "Trần Văn Minh", position: "Quản lý", department: "Hành chính", phone: "0911234567", email: "minh@ktx.edu.vn", startDate: "2020-01-15", status: "active" },
-  { id: "2", staffId: "NV002", fullName: "Nguyễn Thị Hương", position: "Kế toán", department: "Tài chính", phone: "0911234568", email: "huong@ktx.edu.vn", startDate: "2021-03-20", status: "active" },
-  { id: "3", staffId: "NV003", fullName: "Lê Văn Hùng", position: "Kỹ thuật viên", department: "Bảo trì", phone: "0911234569", email: "hung@ktx.edu.vn", startDate: "2019-05-10", status: "active" },
-  { id: "4", staffId: "NV004", fullName: "Phạm Thị Lan", position: "Lễ tân", department: "Hành chính", phone: "0911234570", email: "lan@ktx.edu.vn", startDate: "2022-08-01", status: "active" },
-  { id: "5", staffId: "NV005", fullName: "Hoàng Văn Nam", position: "Bảo vệ", department: "An ninh", phone: "0911234571", email: "nam@ktx.edu.vn", startDate: "2018-02-15", status: "active" },
-];
-
 export function StaffManagement() {
-  const [staff, setStaff] = useState<Staff[]>(initialStaff);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterDepartment, setFilterDepartment] = useState<string>("all");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Bộ lọc
+  const [keyword, setKeyword] = useState("");
+  const [filterDept, setFilterDept] = useState("all");
+  const [filterStatus, setFilterStatus] = useState("all");
+
+  // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+
+  // Form state
   const [formData, setFormData] = useState({
-    staffId: "",
     fullName: "",
-    position: "",
-    department: "",
     phone: "",
     email: "",
-    startDate: "",
-    status: "active" as const,
+    startDate: new Date().toISOString().split("T")[0],
+    positionId: "",
+    departmentId: "",
+    status: "1",
   });
 
-  const filteredStaff = staff.filter((s) => {
-    const matchesSearch = 
-      s.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.staffId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.phone.includes(searchTerm) ||
-      s.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesDepartment = filterDepartment === "all" || s.department === filterDepartment;
-    const matchesStatus = filterStatus === "all" || s.status === filterStatus;
-    return matchesSearch && matchesDepartment && matchesStatus;
-  });
+  useEffect(() => {
+    fetchStaticData();
+    fetchAll();
+  }, []);
 
-  const stats = {
-    total: staff.length,
-    active: staff.filter(s => s.status === "active").length,
-    departments: new Set(staff.map(s => s.department)).size,
+  const fetchStaticData = async () => {
+    try {
+      const [d, r] = await Promise.all([
+        apiRequest("/api/Department"),
+        apiRequest("/api/Role"),
+      ]);
+      setDepartments(d);
+      setRoles(r);
+    } catch {
+      toast.error("Không thể tải danh mục phòng ban/chức vụ");
+    }
   };
 
-  const handleAdd = () => {
-    setEditingStaff(null);
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (keyword) params.append("keyword", keyword);
+      if (filterDept !== "all") params.append("departmentId", filterDept);
+      if (filterStatus !== "all") params.append("status", filterStatus);
+
+      const data = await apiRequest(`/api/Staff?${params.toString()}`);
+      
+      const mapped = data.map((x: any) => ({
+        id: x.id.toString(),
+        staffId: x.staffCode,
+        fullName: x.fullName,
+        position: x.roleName,
+        department: x.departmentName,
+        phone: x.phone || "",
+        email: x.email || "",
+        startDate: x.hireDate?.split("T")[0] || "",
+        status: x.status,
+        departmentId: x.departmentId,
+        roleId: x.roleId
+      }));
+
+      setStaff(mapped);
+    } catch (error) {
+      toast.error("Lỗi kết nối đến máy chủ");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEdit = (s: Staff) => {
+    setEditingStaff(s);
     setFormData({
-      staffId: "",
-      fullName: "",
-      position: "",
-      department: "",
-      phone: "",
-      email: "",
-      startDate: "",
-      status: "active",
+      fullName: s.fullName,
+      phone: s.phone,
+      email: s.email,
+      startDate: s.startDate,
+      positionId: s.roleId.toString(),
+      departmentId: s.departmentId.toString(),
+      status: s.status.toString(),
     });
     setDialogOpen(true);
   };
 
-  const handleEdit = (staffMember: Staff) => {
-    setEditingStaff(staffMember);
-    setFormData(staffMember);
-    setDialogOpen(true);
+  const handleDelete = async (id: string) => {
+    if (!confirm("Bạn có chắc chắn muốn xóa nhân viên này khỏi hệ thống?")) return;
+    
+    try {
+      await apiRequest(`/api/Staff/${id}`, { method: "DELETE" });
+      toast.success("Xóa nhân viên thành công");
+      fetchAll();
+    } catch (error) {
+      toast.error("Không thể xóa nhân viên (có thể do ràng buộc dữ liệu)");
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setStaff(staff.filter((s) => s.id !== id));
-    toast.success("Đã xóa nhân viên thành công");
+const handleSave = async () => {
+  if (!formData.fullName.trim())
+    return toast.warning("Họ tên không được để trống");
+
+  if (formData.phone && !/^\d+$/.test(formData.phone)) {
+    return toast.warning("SĐT phải là số");
+  }
+
+  if (!formData.departmentId || !formData.positionId) {
+    return toast.warning("Chọn phòng ban + chức vụ");
+  }
+
+  setSubmitting(true);
+
+  // ✅ BODY CHUẨN
+  const body: any = {
+    id: editingStaff ? Number(editingStaff.id) : 0,
+    fullName: formData.fullName,
+    phone: formData.phone || "",
+    email: formData.email || "",
+    hireDate: new Date(formData.startDate).toISOString(),
+    status: Number(formData.status),
+    departmentId: Number(formData.departmentId),
+    roleId: Number(formData.positionId),
   };
 
-  const handleSave = () => {
-    if (!formData.staffId || !formData.fullName || !formData.position || !formData.department || !formData.phone || !formData.email) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
-    }
+  // ✅ CHỈ gửi khi UPDATE
+  if (editingStaff) {
+    body.staffCode = editingStaff.staffId;
+  }
 
-    if (editingStaff) {
-      setStaff(staff.map((s) =>
-        s.id === editingStaff.id ? { ...s, ...formData } : s
-      ));
-      toast.success("Đã cập nhật thông tin nhân viên");
-    } else {
-      const newStaff: Staff = {
-        id: Date.now().toString(),
-        ...formData,
-      };
-      setStaff([...staff, newStaff]);
-      toast.success("Đã thêm nhân viên mới thành công");
-    }
+  try {
+    const method = editingStaff ? "PUT" : "POST";
+    const url = editingStaff
+      ? `/api/Staff/${editingStaff.id}`
+      : `/api/Staff`;
+
+    await apiRequest(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    toast.success(editingStaff ? "Cập nhật Thành công" : "Thêm Thành công");
     setDialogOpen(false);
+    fetchAll();
+  } catch (err) {
+    console.error(err);
+    toast.error("API lỗi — check lại dữ liệu");
+  } finally {
+    setSubmitting(false);
+  }
+};
+
+  const resetFilters = () => {
+    setKeyword("");
+    setFilterDept("all");
+    setFilterStatus("all");
+    fetchAll();
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Quản lý nhân viên</h2>
-          <p className="text-gray-500 mt-1">Quản lý thông tin nhân viên KTX</p>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-800">Quản lý Nhân sự</h2>
+          <p className="text-muted-foreground">Quản lý hồ sơ, phòng ban và trạng thái làm việc.</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Thêm nhân viên
+        <Button onClick={() => { 
+            setEditingStaff(null); 
+            setFormData({
+                fullName: "", phone: "", email: "", startDate: new Date().toISOString().split("T")[0],
+                positionId: "", departmentId: "", status: "1"
+            }); 
+            setDialogOpen(true); 
+        }} className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="mr-2 h-4 w-4" /> Thêm nhân viên
         </Button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng nhân viên</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.total}</p>
-              </div>
-              <UsersRound className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Đang làm việc</p>
-                <p className="text-2xl font-semibold text-green-600 mt-2">{stats.active}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Số phòng ban</p>
-                <p className="text-2xl font-semibold text-blue-600 mt-2">{stats.departments}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
+      {/* FILTER AREA */}
+      <Card className="border-none shadow-sm bg-slate-50/50">
+        <CardContent className="pt-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Tìm kiếm theo tên, mã NV, SĐT, email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                placeholder="Tìm tên, mã, email..."
+                className="pl-9 bg-white"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && fetchAll()}
               />
             </div>
-            <Select value={filterDepartment} onValueChange={setFilterDepartment}>
-              <SelectTrigger>
+            <Select value={filterDept} onValueChange={setFilterDept}>
+              <SelectTrigger className="bg-white">
                 <SelectValue placeholder="Phòng ban" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả phòng ban</SelectItem>
-                <SelectItem value="Hành chính">Hành chính</SelectItem>
-                <SelectItem value="Tài chính">Tài chính</SelectItem>
-                <SelectItem value="Bảo trì">Bảo trì</SelectItem>
-                <SelectItem value="An ninh">An ninh</SelectItem>
+                {departments.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-white">
                 <SelectValue placeholder="Trạng thái" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                <SelectItem value="active">Đang làm việc</SelectItem>
-                <SelectItem value="inactive">Đã nghỉ</SelectItem>
+                <SelectItem value="1">Đang hoạt động</SelectItem>
+                <SelectItem value="0">Nghỉ việc</SelectItem>
               </SelectContent>
             </Select>
+            <div className="flex gap-2">
+                <Button variant="default" className="flex-1" onClick={fetchAll}>
+                    <Filter className="mr-2 h-4 w-4" /> Lọc
+                </Button>
+                <Button variant="outline" size="icon" onClick={resetFilters}>
+                    <RefreshCcw className="h-4 w-4" />
+                </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Staff Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mã NV</TableHead>
-                <TableHead>Họ và tên</TableHead>
-                <TableHead>Chức vụ</TableHead>
-                <TableHead>Phòng ban</TableHead>
-                <TableHead>Số điện thoại</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Ngày vào làm</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredStaff.map((staffMember) => (
-                <TableRow key={staffMember.id}>
-                  <TableCell className="font-medium">{staffMember.staffId}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        <User className="h-4 w-4 text-blue-600" />
-                      </div>
-                      <span>{staffMember.fullName}</span>
-                    </div>
+      {/* DATA TABLE */}
+      <Card className="shadow-sm overflow-hidden border-none">
+        <Table>
+          <TableHeader className="bg-slate-100">
+            <TableRow>
+              <TableHead className="font-bold">Mã NV</TableHead>
+              <TableHead className="font-bold">Nhân viên</TableHead>
+              <TableHead className="font-bold">Phòng ban & Chức vụ</TableHead>
+              <TableHead className="font-bold">SĐT</TableHead>
+              <TableHead className="font-bold">Ngày vào</TableHead>
+              <TableHead className="font-bold">Trạng thái</TableHead>
+              <TableHead className="text-right font-bold">Thao tác</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-20">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
                   </TableCell>
-                  <TableCell>{staffMember.position}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{staffMember.department}</Badge>
+                </TableRow>
+            ) : staff.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-20 text-muted-foreground">
+                    Không tìm thấy dữ liệu.
                   </TableCell>
-                  <TableCell>{staffMember.phone}</TableCell>
-                  <TableCell>{staffMember.email}</TableCell>
-                  <TableCell>{new Date(staffMember.startDate).toLocaleDateString('vi-VN')}</TableCell>
+                </TableRow>
+            ) : (
+              staff.map((s) => (
+                <TableRow key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                  <TableCell className="font-bold text-blue-600">{s.staffId}</TableCell>
                   <TableCell>
-                    {staffMember.status === "active" ? (
-                      <Badge className="bg-green-100 text-green-800">Đang làm việc</Badge>
-                    ) : (
-                      <Badge className="bg-gray-100 text-gray-800">Đã nghỉ</Badge>
-                    )}
+                    <div className="font-semibold">{s.fullName}</div>
+                    <div className="text-xs text-slate-500">{s.email}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm font-medium">{s.department}</div>
+                    <div className="text-xs text-blue-500 font-medium uppercase">{s.position}</div>
+                  </TableCell>
+                  <TableCell className="text-sm">{s.phone}</TableCell>
+                  <TableCell className="text-sm">{new Date(s.startDate).toLocaleDateString('vi-VN')}</TableCell>
+                  <TableCell>
+                    <Badge variant={s.status === 1 ? "default" : "secondary"} className={s.status === 1 ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-slate-100 text-slate-600"}>
+                      {s.status === 1 ? "Hoạt động" : "Nghỉ việc"}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(staffMember)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => handleDelete(staffMember.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                    <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" className="text-blue-600 hover:bg-blue-50" onClick={() => handleEdit(s)}>
+                            <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-red-600 hover:bg-red-50" onClick={() => handleDelete(s.id)}>
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+              ))
+            )}
+          </TableBody>
+        </Table>
       </Card>
 
-      {/* Add/Edit Dialog */}
+      {/* DIALOG ADD/EDIT */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>
-              {editingStaff ? "Chỉnh sửa thông tin nhân viên" : "Thêm nhân viên mới"}
+            <DialogTitle className="text-2xl font-bold text-slate-800">
+              {editingStaff ? "Cập nhật thông tin" : "Tiếp nhận nhân sự mới"}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="staffId">Mã nhân viên *</Label>
-                <Input
-                  id="staffId"
-                  value={formData.staffId}
-                  onChange={(e) => setFormData({ ...formData, staffId: e.target.value })}
-                  placeholder="VD: NV001"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Họ và tên *</Label>
-                <Input
-                  id="fullName"
-                  value={formData.fullName}
-                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                  placeholder="VD: Trần Văn Minh"
-                />
-              </div>
+
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="col-span-2 space-y-2">
+              <Label>Mã NV (Hệ thống tự cấp)</Label>
+              <Input 
+                value={editingStaff ? editingStaff.staffId : "Sẽ tự động sinh mã..."} 
+                disabled 
+                className="bg-slate-50 italic"
+              />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="position">Chức vụ *</Label>
-                <Input
-                  id="position"
-                  value={formData.position}
-                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                  placeholder="VD: Quản lý"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Phòng ban *</Label>
-                <Select
-                  value={formData.department}
-                  onValueChange={(value) => setFormData({ ...formData, department: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn phòng ban" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Hành chính">Hành chính</SelectItem>
-                    <SelectItem value="Tài chính">Tài chính</SelectItem>
-                    <SelectItem value="Bảo trì">Bảo trì</SelectItem>
-                    <SelectItem value="An ninh">An ninh</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+            <div className="col-span-2 space-y-2">
+              <Label>Họ và tên <span className="text-red-500">*</span></Label>
+              <Input 
+                value={formData.fullName} 
+                onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                placeholder="VD: Nguyễn Văn A" 
+              />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Số điện thoại *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="VD: 0911234567"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="VD: minh@ktx.edu.vn"
-                />
-              </div>
+            
+            <div className="space-y-2">
+              <Label>Số điện thoại *</Label>
+              <Input 
+                value={formData.phone} 
+                onChange={(e) => setFormData({...formData, phone: e.target.value})}
+                placeholder="0987xxxxxx"
+              />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Ngày vào làm</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Trạng thái</Label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn trạng thái" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Đang làm việc</SelectItem>
-                    <SelectItem value="inactive">Đã nghỉ</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+            <div className="space-y-2">
+              <Label>Email công vụ *</Label>
+              <Input 
+                type="email" 
+                value={formData.email} 
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                placeholder="example@company.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Phòng ban *</Label>
+              <Select value={formData.departmentId} onValueChange={(v) => setFormData({...formData, departmentId: v})}>
+                <SelectTrigger><SelectValue placeholder="Chọn phòng ban" /></SelectTrigger>
+                <SelectContent>
+                  {departments.map(d => <SelectItem key={d.id} value={d.id.toString()}>{d.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Chức vụ *</Label>
+              <Select value={formData.positionId} onValueChange={(v) => setFormData({...formData, positionId: v})}>
+                <SelectTrigger><SelectValue placeholder="Chọn chức vụ" /></SelectTrigger>
+                <SelectContent>
+                  {roles.map(r => <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Ngày vào làm</Label>
+              <Input 
+                type="date" 
+                value={formData.startDate} 
+                onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Trạng thái</Label>
+              <Select value={formData.status} onValueChange={(v) => setFormData({...formData, status: v})}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Đang làm việc</SelectItem>
+                  <SelectItem value="0">Đã nghỉ việc</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave}>
-              {editingStaff ? "Cập nhật" : "Thêm mới"}
+
+          <DialogFooter className="border-t pt-4 gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>Hủy bỏ</Button>
+            <Button onClick={handleSave} disabled={submitting} className="min-w-[120px] bg-blue-600">
+              {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {editingStaff ? "Lưu thay đổi" : "Thêm nhân viên"}
             </Button>
           </DialogFooter>
         </DialogContent>

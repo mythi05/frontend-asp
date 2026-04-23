@@ -1,5 +1,7 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
+
+// Import các trang của bạn...
 import { Dashboard } from "./components/pages/Dashboard";
 import { RoomManagement } from "./components/pages/RoomManagement";
 import { StudentManagement } from "./components/pages/StudentManagement";
@@ -11,31 +13,41 @@ import { ViolationsManagement } from "./components/pages/ViolationsManagement";
 import { ServicesManagement } from "./components/pages/ServicesManagement";
 import { MaintenanceManagement } from "./components/pages/MaintenanceManagement";
 import { ContractsManagement } from "./components/pages/ContractsManagement";
-import { VisitorsManagement } from "./components/pages/VisitorsManagement";
-import { AnnouncementsManagement } from "./components/pages/AnnouncementsManagement";
 import { StaffManagement } from "./components/pages/StaffManagement";
-import { NotFound } from "./components/pages/NotFound";
+import { ProtectedRoute } from "./components/pages/ProtectedRoute";
+import { LoginPage } from "./components/pages/LoginPage";
 
 export const router = createBrowserRouter([
   {
-    path: "/",
-    Component: Layout,
+    path: "/login",
+    element: <LoginPage />,
+  },
+  {
+    path: "/", // 👈 THÊM CÁI NÀY
+    element: <ProtectedRoute />,
     children: [
-      { index: true, Component: Dashboard },
-      { path: "rooms", Component: RoomManagement },
-      { path: "students", Component: StudentManagement },
-      { path: "checkinout", Component: CheckInOut },
-      { path: "fees", Component: FeeManagement },
-      { path: "equipment", Component: EquipmentManagement },
-      { path: "violations", Component: ViolationsManagement },
-      { path: "services", Component: ServicesManagement },
-      { path: "maintenance", Component: MaintenanceManagement },
-      { path: "contracts", Component: ContractsManagement },
-      { path: "visitors", Component: VisitorsManagement },
-      { path: "announcements", Component: AnnouncementsManagement },
-      { path: "staff", Component: StaffManagement },
-      { path: "reports", Component: Reports },
-      { path: "*", Component: NotFound },
+      {
+        path: "",
+        element: <Layout />,
+        children: [
+          { index: true, element: <Dashboard /> },
+          { path: "rooms", element: <RoomManagement /> },
+          { path: "students", element: <StudentManagement /> },
+          { path: "checkinout", element: <CheckInOut /> },
+          { path: "fees", element: <FeeManagement /> },
+          { path: "equipment", element: <EquipmentManagement /> },
+          { path: "violations", element: <ViolationsManagement /> },
+          { path: "services", element: <ServicesManagement /> },
+          { path: "maintenance", element: <MaintenanceManagement /> },
+          { path: "contracts", element: <ContractsManagement /> },
+          { path: "staff", element: <StaffManagement /> },
+          { path: "reports", element: <Reports /> },
+        ],
+      },
     ],
+  },
+  {
+    path: "*",
+    element: <Navigate to="/" />,
   },
 ]);

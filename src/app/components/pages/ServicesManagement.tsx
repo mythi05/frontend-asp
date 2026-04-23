@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -26,390 +26,319 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { Plus, Search, CheckCircle2, XCircle, Briefcase } from "lucide-react";
+import { 
+  Plus, Search, Briefcase, 
+  Loader2, DollarSign, UserCheck, RefreshCcw, UserSearch,
+  Power
+} from "lucide-react";
 import { toast } from "sonner";
-
-interface ServiceRegistration {
-  id: string;
-  studentId: string;
-  studentName: string;
-  room: string;
-  service: string;
-  price: number;
-  startDate: string;
-  endDate: string;
-  status: "active" | "expired" | "cancelled";
-  registrationDate: string;
-}
-
-const initialRegistrations: ServiceRegistration[] = [
-  { id: "1", studentId: "SV001", studentName: "Nguyễn Văn A", room: "A101", service: "Internet", price: 150000, startDate: "2026-03-01", endDate: "2026-06-01", status: "active", registrationDate: "2026-02-25" },
-  { id: "2", studentId: "SV002", studentName: "Trần Thị B", room: "B201", service: "Giặt ủi", price: 200000, startDate: "2026-03-01", endDate: "2026-04-01", status: "active", registrationDate: "2026-02-28" },
-  { id: "3", studentId: "SV003", studentName: "Lê Văn C", room: "A102", service: "Đỗ xe", price: 100000, startDate: "2026-01-01", endDate: "2026-03-01", status: "expired", registrationDate: "2025-12-28" },
-  { id: "4", studentId: "SV004", studentName: "Phạm Thị D", room: "C301", service: "Internet", price: 150000, startDate: "2026-03-01", endDate: "2026-06-01", status: "active", registrationDate: "2026-02-27" },
-  { id: "5", studentId: "SV005", studentName: "Hoàng Văn E", room: "B202", service: "Giặt ủi", price: 200000, startDate: "2026-02-01", endDate: "2026-03-01", status: "cancelled", registrationDate: "2026-01-28" },
-];
+import { apiRequest } from "../../api";
 
 const services = [
-  { name: "Internet", price: 150000, unit: "tháng" },
-  { name: "Giặt ủi", price: 200000, unit: "tháng" },
-  { name: "Đỗ xe", price: 100000, unit: "tháng" },
-  { name: "Thể thao", price: 50000, unit: "tháng" },
+  { name: "Internet", price: 150000 },
+  { name: "Giặt ủi", price: 200000 },
+  { name: "Đỗ xe", price: 100000 },
+  { name: "Thể thao", price: 50000 },
+  { name: "Điện nước", price: 0 }
 ];
 
 export function ServicesManagement() {
-  const [registrations, setRegistrations] = useState<ServiceRegistration[]>(initialRegistrations);
+  const [registrations, setRegistrations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterService, setFilterService] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [stats, setStats] = useState<any>(null);
+
   const [formData, setFormData] = useState({
-    studentId: "",
+    studentCode: "", 
+    studentId: "",   
     studentName: "",
     room: "",
-    service: "",
-    price: "",
-    startDate: "",
+    serviceName: "",
+    price: 0,
+    startDate: new Date().toISOString().split('T')[0],
     endDate: "",
   });
 
-  const filteredRegistrations = registrations.filter((reg) => {
-    const matchesSearch = 
-      reg.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reg.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      reg.room.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || reg.status === filterStatus;
-    const matchesService = filterService === "all" || reg.service === filterService;
-    return matchesSearch && matchesStatus && matchesService;
-  });
+  useEffect(() => {
+    fetchData();
+    fetchDashboard();
+  }, [searchTerm, filterService]);
 
-  const stats = {
-    total: registrations.length,
-    active: registrations.filter(r => r.status === "active").length,
-    expired: registrations.filter(r => r.status === "expired").length,
-    revenue: registrations.filter(r => r.status === "active").reduce((sum, r) => sum + r.price, 0),
-  };
-
-  const handleAdd = () => {
-    setFormData({
-      studentId: "",
-      studentName: "",
-      room: "",
-      service: "",
-      price: "",
-      startDate: "",
-      endDate: "",
-    });
-    setDialogOpen(true);
-  };
-
-  const handleCancel = (id: string) => {
-    setRegistrations(registrations.map((reg) =>
-      reg.id === id ? { ...reg, status: "cancelled" as const } : reg
-    ));
-    toast.success("Đã hủy đăng ký dịch vụ");
-  };
-
-  const handleSave = () => {
-    if (!formData.studentId || !formData.studentName || !formData.service || !formData.startDate) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchTerm) params.append("search", searchTerm);
+      if (filterService !== "all") params.append("serviceName", filterService);
+      const data = await apiRequest<any[]>(`/api/ServiceApi?${params.toString()}`);
+      setRegistrations(data);
+    } catch (error) {
+      toast.error("Lỗi tải danh sách dịch vụ");
+    } finally {
+      setLoading(false);
     }
-
-    const newRegistration: ServiceRegistration = {
-      id: Date.now().toString(),
-      studentId: formData.studentId,
-      studentName: formData.studentName,
-      room: formData.room,
-      service: formData.service,
-      price: parseInt(formData.price) || 0,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      status: "active",
-      registrationDate: new Date().toISOString().split('T')[0],
-    };
-    setRegistrations([newRegistration, ...registrations]);
-    toast.success("Đã đăng ký dịch vụ thành công");
-    setDialogOpen(false);
   };
 
-  const handleServiceChange = (serviceName: string) => {
-    const service = services.find(s => s.name === serviceName);
-    if (service) {
-      setFormData({
-        ...formData,
-        service: serviceName,
-        price: service.price.toString(),
+  const fetchDashboard = async () => {
+    try {
+      const data = await apiRequest<any>("/api/ServiceApi/dashboard");
+      setStats(data);
+    } catch (err) { console.error(err); }
+  };
+
+  const handleToggleStatus = async (id: number, currentStatus: number) => {
+    try {
+      const newStatus = currentStatus === 1 ? 0 : 1;
+      await apiRequest(`/api/ServiceApi/${id}/status`, {
+        method: "PUT",
+        body: JSON.stringify(newStatus)
       });
+      toast.success("Cập nhật trạng thái thành công");
+      fetchData();
+      fetchDashboard();
+    } catch (error: any) {
+      toast.error("Không thể đổi trạng thái");
     }
   };
 
-  const getStatusBadge = (status: ServiceRegistration["status"]) => {
-    switch (status) {
-      case "active":
-        return <Badge className="bg-green-100 text-green-800">Đang sử dụng</Badge>;
-      case "expired":
-        return <Badge className="bg-gray-100 text-gray-800">Hết hạn</Badge>;
-      case "cancelled":
-        return <Badge className="bg-red-100 text-red-800">Đã hủy</Badge>;
+  const handleValidateStudent = async () => {
+    if (!formData.studentCode) return toast.error("Vui lòng nhập MSSV");
+    setIsValidating(true);
+    try {
+      const student = await apiRequest<any>(`/api/Student/by-code/${formData.studentCode}`);
+      if (student) {
+        const start = new Date(formData.startDate);
+        const end = new Date(start);
+        end.setMonth(end.getMonth() + 6);
+
+        setFormData(prev => ({
+          ...prev,
+          studentId: String(student.id),
+          studentName: student.fullName,
+          room: student.room?.roomName || "Chưa xếp phòng",
+          endDate: end.toISOString().split('T')[0]
+        }));
+        toast.success("Xác thực sinh viên thành công!");
+      }
+    } catch (err) { 
+      setFormData(prev => ({ ...prev, studentId: "", studentName: "", room: "" }));
+      toast.error("MSSV không tồn tại"); 
+    } finally { setIsValidating(false); }
+  };
+
+  const handleSave = async () => {
+    if (!formData.studentId) return toast.error("Vui lòng Xác thực sinh viên trước");
+    if (!formData.serviceName) return toast.error("Vui lòng chọn loại dịch vụ");
+    
+    setLoading(true);
+    try {
+      const payload = {
+        studentId: String(formData.studentId),
+        studentName: String(formData.studentName),
+        room: String(formData.room),
+        serviceName: String(formData.serviceName),
+        price: Number(formData.price),
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        status: 1
+      };
+
+      await apiRequest("/api/ServiceApi", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+
+      toast.success("Đăng ký thành công!");
+      setDialogOpen(false);
+      setFormData({
+        studentCode: "", studentId: "", studentName: "", room: "",
+        serviceName: "", price: 0, startDate: new Date().toISOString().split('T')[0], endDate: ""
+      });
+      fetchData();
+      fetchDashboard();
+    } catch (error: any) {
+      toast.error(error.message || "Lỗi dữ liệu (400)");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-6 bg-slate-50/50 min-h-screen font-sans">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Quản lý dịch vụ</h2>
-          <p className="text-gray-500 mt-1">Đăng ký và quản lý các dịch vụ ký túc xá</p>
+          <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-3">
+            <div className="p-2 bg-indigo-600 rounded-lg text-white"><Briefcase size={24} /></div>
+            Quản lý Dịch vụ & Tiện ích
+          </h2>
+          <p className="text-slate-500 text-sm mt-1">Đăng ký & Theo dõi dịch vụ sinh viên</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Đăng ký dịch vụ
+        <Button onClick={() => setDialogOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 h-11 px-6 rounded-xl shadow-md">
+          <Plus className="mr-2 h-5 w-5" /> Đăng ký mới
         </Button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng đăng ký</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.total}</p>
-              </div>
-              <Briefcase className="h-8 w-8 text-blue-600" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Đang sử dụng</p>
-                <p className="text-2xl font-semibold text-green-600 mt-2">{stats.active}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Hết hạn</p>
-                <p className="text-2xl font-semibold text-gray-600 mt-2">{stats.expired}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Doanh thu</p>
-                <p className="text-2xl font-semibold text-blue-600 mt-2">{(stats.revenue / 1000000).toFixed(1)}M</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <StatCard label="Đang hoạt động" value={stats?.activeServices} icon={UserCheck} color="emerald" />
+        <StatCard label="Doanh thu dự kiến" value={`${(stats?.totalRevenue || 0).toLocaleString()} VNĐ`} icon={DollarSign} color="indigo" />
       </div>
 
-      {/* Service Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {services.map((service) => (
-          <Card key={service.name}>
-            <CardContent className="p-6">
-              <div className="text-center">
-                <Briefcase className="h-10 w-10 mx-auto text-blue-600 mb-3" />
-                <h3 className="font-semibold text-gray-900">{service.name}</h3>
-                <p className="text-2xl font-semibold text-blue-600 mt-2">
-                  {service.price.toLocaleString()}đ
-                </p>
-                <p className="text-sm text-gray-500">/{service.unit}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Tìm kiếm sinh viên, phòng..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterService} onValueChange={setFilterService}>
-              <SelectTrigger>
-                <SelectValue placeholder="Dịch vụ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả dịch vụ</SelectItem>
-                {services.map((service) => (
-                  <SelectItem key={service.name} value={service.name}>{service.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="active">Đang sử dụng</SelectItem>
-                <SelectItem value="expired">Hết hạn</SelectItem>
-                <SelectItem value="cancelled">Đã hủy</SelectItem>
-              </SelectContent>
-            </Select>
+      {/* Table */}
+      <Card className="border-none shadow-xl rounded-2xl overflow-hidden bg-white">
+        <div className="p-5 border-b flex flex-col md:flex-row gap-4 bg-white">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input className="pl-10 bg-slate-50 border-slate-200 rounded-xl" placeholder="Tìm kiếm sinh viên..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-        </CardContent>
-      </Card>
+          <Select value={filterService} onValueChange={setFilterService}>
+            <SelectTrigger className="w-[200px] rounded-xl">
+              <SelectValue placeholder="Lọc dịch vụ" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tất cả dịch vụ</SelectItem>
+              {services.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
 
-      {/* Registrations Table */}
-      <Card>
-        <CardContent className="p-0">
+        <div className="overflow-x-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-slate-50/80">
               <TableRow>
-                <TableHead>MSSV</TableHead>
-                <TableHead>Sinh viên</TableHead>
-                <TableHead>Phòng</TableHead>
-                <TableHead>Dịch vụ</TableHead>
-                <TableHead>Giá</TableHead>
-                <TableHead>Ngày bắt đầu</TableHead>
-                <TableHead>Ngày kết thúc</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
+                <TableHead className="font-bold pl-6">HỌ TÊN SINH VIÊN</TableHead>
+                <TableHead className="font-bold text-center">PHÒNG</TableHead>
+                <TableHead className="font-bold text-center">DỊCH VỤ</TableHead>
+                <TableHead className="font-bold text-right">PHÍ/THÁNG</TableHead>
+                <TableHead className="font-bold text-center">THỜI HẠN</TableHead>
+                <TableHead className="font-bold text-center">TRẠNG THÁI</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRegistrations.map((reg) => (
-                <TableRow key={reg.id}>
-                  <TableCell className="font-medium">{reg.studentId}</TableCell>
-                  <TableCell>{reg.studentName}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{reg.room}</Badge>
+              {registrations.map((reg) => (
+                <TableRow key={reg.id} className="hover:bg-slate-50/50">
+                  <TableCell className="pl-6 py-4">
+                    <span className="text-sm font-semibold text-slate-800">{reg.studentName}</span>
                   </TableCell>
-                  <TableCell>{reg.service}</TableCell>
-                  <TableCell>{reg.price.toLocaleString()}đ</TableCell>
-                  <TableCell>{new Date(reg.startDate).toLocaleDateString('vi-VN')}</TableCell>
-                  <TableCell>{new Date(reg.endDate).toLocaleDateString('vi-VN')}</TableCell>
-                  <TableCell>{getStatusBadge(reg.status)}</TableCell>
-                  <TableCell className="text-right">
-                    {reg.status === "active" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600"
-                        onClick={() => handleCancel(reg.id)}
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    )}
+                  <TableCell className="text-center"><Badge variant="outline" className="bg-slate-50">{reg.room}</Badge></TableCell>
+                  <TableCell className="text-center font-bold text-slate-700">{reg.serviceName}</TableCell>
+                  <TableCell className="text-right font-black">{reg.price.toLocaleString()}đ</TableCell>
+                  <TableCell className="text-center text-[11px]">
+                    {new Date(reg.startDate).toLocaleDateString('vi-VN')} <br/>
+                    đến {new Date(reg.endDate).toLocaleDateString('vi-VN')}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <button 
+                      onClick={() => handleToggleStatus(reg.id, reg.status)}
+                      className="group relative flex items-center justify-center w-full focus:outline-none"
+                    >
+                      {reg.status === 1 ? (
+                        <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-200 transition-colors cursor-pointer pr-2">
+                          Đang hiệu lực <Power size={12} className="ml-1 opacity-50 group-hover:opacity-100" />
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-500 hover:bg-slate-200 cursor-pointer pr-2">
+                          Hết hạn <Power size={12} className="ml-1 opacity-50 group-hover:opacity-100" />
+                        </Badge>
+                      )}
+                    </button>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-        </CardContent>
+        </div>
       </Card>
 
-      {/* Add Dialog */}
+      {/* Dialog Đăng ký */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Đăng ký dịch vụ mới</DialogTitle>
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+          <DialogHeader className="p-6 bg-slate-900 text-white">
+            <DialogTitle className="flex items-center gap-3 text-white">
+              <div className="p-2 bg-indigo-500 rounded-lg"><Plus size={20} /></div>
+              Đăng ký dịch vụ mới
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="studentId">Mã sinh viên *</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                  placeholder="VD: SV001"
-                />
+
+          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-slate-700 uppercase">1. Xác thực sinh viên</Label>
+                <div className="flex gap-2">
+                  <Input placeholder="Nhập MSSV..." value={formData.studentCode} onChange={e => setFormData({...formData, studentCode: e.target.value})} className="h-11 rounded-xl" />
+                  <Button onClick={handleValidateStudent} disabled={isValidating} className="h-11 bg-indigo-600 text-white rounded-xl">
+                    {isValidating ? <Loader2 className="animate-spin" /> : <UserSearch size={18}/>}
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentName">Họ và tên *</Label>
-                <Input
-                  id="studentName"
-                  value={formData.studentName}
-                  onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                  placeholder="VD: Nguyễn Văn A"
-                />
+              <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Họ tên:</span><span className="font-bold">{formData.studentName || "---"}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-slate-500">Phòng:</span><Badge className="bg-indigo-500">{formData.room || "---"}</Badge></div>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="room">Phòng</Label>
-              <Input
-                id="room"
-                value={formData.room}
-                onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                placeholder="VD: A101"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="service">Dịch vụ *</Label>
-              <Select
-                value={formData.service}
-                onValueChange={handleServiceChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Chọn dịch vụ" />
-                </SelectTrigger>
-                <SelectContent>
-                  {services.map((service) => (
-                    <SelectItem key={service.name} value={service.name}>
-                      {service.name} - {service.price.toLocaleString()}đ/{service.unit}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startDate">Ngày bắt đầu *</Label>
-                <Input
-                  id="startDate"
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                />
+
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label className="text-sm font-bold text-slate-700 uppercase">2. Chọn dịch vụ</Label>
+                <Select onValueChange={(val) => {
+                  const s = services.find(x => x.name === val);
+                  setFormData({...formData, serviceName: val, price: s?.price || 0});
+                }}>
+                  <SelectTrigger className="h-11 rounded-xl">
+                    <SelectValue placeholder="Loại dịch vụ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.map(s => <SelectItem key={s.name} value={s.name}>{s.name} ({s.price.toLocaleString()}đ)</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="endDate">Ngày kết thúc</Label>
-                <Input
-                  id="endDate"
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-slate-400">Ngày bắt đầu</Label>
+                  <Input type="date" value={formData.startDate} onChange={e => setFormData({...formData, startDate: e.target.value})} className="h-10 rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-bold uppercase text-slate-400">Ngày kết thúc</Label>
+                  <Input type="date" value={formData.endDate} onChange={e => setFormData({...formData, endDate: e.target.value})} className="h-10 rounded-lg" />
+                </div>
               </div>
-            </div>
-            <div className="p-4 bg-blue-50 rounded-lg">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-700">Giá dịch vụ:</span>
-                <span className="text-xl font-semibold text-blue-600">
-                  {formData.price ? parseInt(formData.price).toLocaleString() : 0}đ
-                </span>
+              <div className="mt-4 p-5 bg-indigo-600 rounded-2xl text-white shadow-lg">
+                <p className="text-[10px] font-bold opacity-70 mb-1">PHÍ THANH TOÁN / THÁNG</p>
+                <span className="text-2xl font-black">{formData.price.toLocaleString()}đ</span>
               </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
+
+          <DialogFooter className="bg-slate-50 p-6 border-t gap-3">
+            <Button variant="ghost" onClick={() => setDialogOpen(false)} className="rounded-xl h-11 px-6">Hủy</Button>
+            <Button onClick={handleSave} disabled={loading || !formData.studentId} className="bg-slate-900 hover:bg-black text-white h-11 px-10 rounded-xl shadow-lg transition-all">
+              {loading ? <Loader2 className="animate-spin mr-2" /> : "Xác nhận đăng ký"}
             </Button>
-            <Button onClick={handleSave}>Đăng ký</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+function StatCard({ label, value, icon: Icon, color }: any) {
+  const colorMap: any = {
+    indigo: "border-indigo-500 text-indigo-600 bg-indigo-50/30",
+    emerald: "border-emerald-500 text-emerald-700 bg-emerald-50/30",
+  };
+  return (
+    <Card className={`border-none shadow-sm border-l-4 ${colorMap[color]} rounded-2xl overflow-hidden bg-white`}>
+      <CardContent className="p-6 flex justify-between items-center">
+        <div>
+          <p className="text-[11px] font-bold uppercase text-slate-400 tracking-widest mb-1">{label}</p>
+          <p className="text-2xl font-black text-slate-800">{value || 0}</p>
+        </div>
+        <div className={`p-4 rounded-2xl ${colorMap[color]}`}><Icon size={24} /></div>
+      </CardContent>
+    </Card>
   );
 }

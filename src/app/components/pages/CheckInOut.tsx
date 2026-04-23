@@ -1,311 +1,220 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Badge } from "../ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
-import { Plus, LogIn, LogOut, Calendar } from "lucide-react";
+import { Card, CardContent } from "../ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { toast } from "sonner";
-import { Textarea } from "../ui/textarea";
-
-interface CheckInOutRecord {
-  id: string;
-  studentId: string;
-  studentName: string;
-  room: string;
-  type: "check-in" | "check-out";
-  date: string;
-  notes: string;
-  createdBy: string;
-}
-
-const initialRecords: CheckInOutRecord[] = [
-  { id: "1", studentId: "SV001", studentName: "Nguyễn Văn A", room: "A101", type: "check-in", date: "2024-09-01", notes: "Đã kiểm tra đầy đủ đồ dùng", createdBy: "Admin" },
-  { id: "2", studentId: "SV002", studentName: "Trần Thị B", room: "B201", type: "check-in", date: "2024-09-01", notes: "", createdBy: "Admin" },
-  { id: "3", studentId: "SV003", studentName: "Lê Văn C", room: "A102", type: "check-out", date: "2024-12-15", notes: "Phòng sạch sẽ, không hư hỏng", createdBy: "Admin" },
-  { id: "4", studentId: "SV004", studentName: "Phạm Thị D", room: "C301", type: "check-in", date: "2024-09-10", notes: "", createdBy: "Admin" },
-];
+import { apiRequest } from "../../api";
+import { Badge } from "../ui/badge";
+import { LogIn, LogOut, History, Search, Loader2, UserCheck, ShieldCheck } from "lucide-react";
 
 export function CheckInOut() {
-  const [records, setRecords] = useState<CheckInOutRecord[]>(initialRecords);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [recordType, setRecordType] = useState<"check-in" | "check-out">("check-in");
-  const [formData, setFormData] = useState({
-    studentId: "",
-    studentName: "",
-    room: "",
-    date: new Date().toISOString().split('T')[0],
-    notes: "",
-  });
+  const [history, setHistory] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [studentInfo, setStudentInfo] = useState<any>(null);
+  const [form, setForm] = useState({ studentCode: "", note: "" });
 
-  const checkInRecords = records.filter((r) => r.type === "check-in");
-  const checkOutRecords = records.filter((r) => r.type === "check-out");
-
-  const handleOpenDialog = (type: "check-in" | "check-out") => {
-    setRecordType(type);
-    setFormData({
-      studentId: "",
-      studentName: "",
-      room: "",
-      date: new Date().toISOString().split('T')[0],
-      notes: "",
-    });
-    setDialogOpen(true);
-  };
-
-  const handleSave = () => {
-    if (!formData.studentId || !formData.studentName || !formData.room || !formData.date) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
+  const loadHistory = async () => {
+    try {
+      const h = await apiRequest<any[]>("/api/RoomTransactionApi");
+      setHistory(h);
+    } catch (e) { 
+      toast.error("Lỗi tải lịch sử"); 
     }
-
-    const newRecord: CheckInOutRecord = {
-      id: Date.now().toString(),
-      ...formData,
-      type: recordType,
-      createdBy: "Admin",
-    };
-
-    setRecords([newRecord, ...records]);
-    toast.success(
-      recordType === "check-in" 
-        ? "Đã ghi nhận check-in thành công" 
-        : "Đã ghi nhận check-out thành công"
-    );
-    setDialogOpen(false);
   };
 
-  const RecordsTable = ({ data }: { data: CheckInOutRecord[] }) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>MSSV</TableHead>
-          <TableHead>Họ và tên</TableHead>
-          <TableHead>Phòng</TableHead>
-          <TableHead>Ngày</TableHead>
-          <TableHead>Ghi chú</TableHead>
-          <TableHead>Người xử lý</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.map((record) => (
-          <TableRow key={record.id}>
-            <TableCell className="font-medium">{record.studentId}</TableCell>
-            <TableCell>{record.studentName}</TableCell>
-            <TableCell>
-              <Badge variant="outline">{record.room}</Badge>
-            </TableCell>
-            <TableCell>{new Date(record.date).toLocaleDateString('vi-VN')}</TableCell>
-            <TableCell className="max-w-xs truncate">{record.notes || "-"}</TableCell>
-            <TableCell>{record.createdBy}</TableCell>
-          </TableRow>
-        ))}
-        {data.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={6} className="text-center text-gray-500 py-8">
-              Chưa có dữ liệu
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
-  );
+  useEffect(() => { loadHistory(); }, []);
+
+  const handleValidate = async () => {
+    if (!form.studentCode.trim()) return toast.error("Vui lòng nhập MSSV");
+    setIsValidating(true);
+    try {
+      const data = await apiRequest<any>(`/api/RoomTransactionApi/validate/${form.studentCode}`);
+      setStudentInfo(data);
+      toast.success("Hợp đồng hợp lệ!");
+    } catch (e: any) {
+      setStudentInfo(null);
+      toast.error(e.message || "Không tìm thấy hợp đồng hiệu lực");
+    } finally { 
+      setIsValidating(false); 
+    }
+  };
+
+  const handleAction = async (type: "checkin" | "checkout") => {
+    setLoading(true);
+    try {
+      const url = type === "checkin" ? "/api/RoomTransactionApi/checkin" : `/api/RoomTransactionApi/checkout/${form.studentCode}`;
+      const body = type === "checkin" ? { studentCode: form.studentCode, note: form.note } : undefined;
+
+      await apiRequest(url, {
+        method: "POST",
+        body: body ? JSON.stringify(body) : undefined
+      });
+
+      toast.success(type === "checkin" ? "Đã xác nhận nhận phòng" : "Đã xác nhận trả phòng");
+      
+      // Xóa ghi chú sau khi xong
+      setForm(prev => ({ ...prev, note: "" }));
+      
+      // Quan trọng: Cập nhật lại thông tin sinh viên để đổi trạng thái nút bấm
+      await handleValidate();
+      // Tải lại lịch sử
+      loadHistory();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally { 
+      setLoading(false); 
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold text-gray-900">Quản lý nhận/trả phòng</h2>
-        <p className="text-gray-500 mt-1">Theo dõi quá trình check-in và check-out của sinh viên</p>
+    <div className="p-6 space-y-6 bg-slate-50/30 min-h-screen">
+      <div className="flex items-center gap-3">
+        <div className="p-2 bg-indigo-600 rounded-lg text-white">
+          <UserCheck size={24} />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-slate-800">Điều phối Cư trú</h2>
+          <p className="text-sm text-slate-500">Quản lý việc nhận/trả phòng thực tế dựa trên hợp đồng</p>
+        </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Check-in hôm nay</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">0</p>
-              </div>
-              <div className="p-3 rounded-lg bg-green-100">
-                <LogIn className="h-6 w-6 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Check-out hôm nay</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">0</p>
-              </div>
-              <div className="p-3 rounded-lg bg-red-100">
-                <LogOut className="h-6 w-6 text-red-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng giao dịch</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{records.length}</p>
-              </div>
-              <div className="p-3 rounded-lg bg-blue-100">
-                <Calendar className="h-6 w-6 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex gap-4">
-        <Button onClick={() => handleOpenDialog("check-in")} className="bg-green-600 hover:bg-green-700">
-          <LogIn className="h-4 w-4 mr-2" />
-          Check-in mới
-        </Button>
-        <Button onClick={() => handleOpenDialog("check-out")} variant="destructive">
-          <LogOut className="h-4 w-4 mr-2" />
-          Check-out
-        </Button>
-      </div>
-
-      {/* Records Tabs */}
-      <Tabs defaultValue="check-in" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="check-in" className="gap-2">
-            <LogIn className="h-4 w-4" />
-            Lịch sử check-in ({checkInRecords.length})
-          </TabsTrigger>
-          <TabsTrigger value="check-out" className="gap-2">
-            <LogOut className="h-4 w-4" />
-            Lịch sử check-out ({checkOutRecords.length})
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="check-in">
-          <Card>
-            <CardHeader>
-              <CardTitle>Danh sách check-in</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <RecordsTable data={checkInRecords} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="check-out">
-          <Card>
-            <CardHeader>
-              <CardTitle>Danh sách check-out</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <RecordsTable data={checkOutRecords} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
-              {recordType === "check-in" ? "Ghi nhận check-in" : "Ghi nhận check-out"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="studentId">Mã sinh viên *</Label>
-              <Input
-                id="studentId"
-                value={formData.studentId}
-                onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                placeholder="VD: SV001"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="studentName">Họ và tên *</Label>
-              <Input
-                id="studentName"
-                value={formData.studentName}
-                onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                placeholder="VD: Nguyễn Văn A"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="room">Phòng *</Label>
-                <Input
-                  id="room"
-                  value={formData.room}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  placeholder="VD: A101"
+      <Card className="border-none shadow-2xl rounded-3xl overflow-hidden bg-white">
+        <div className="grid grid-cols-1 md:grid-cols-12">
+          {/* Section 1: Search */}
+          <div className="md:col-span-4 p-8 border-r border-slate-100 space-y-6">
+            <div className="space-y-3">
+              <label className="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Bước 1: Kiểm tra MSSV</label>
+              <div className="relative">
+                <Input 
+                  placeholder="Nhập MSSV (Vd: 212311...)" 
+                  value={form.studentCode} 
+                  onChange={e => setForm({...form, studentCode: e.target.value})}
+                  className="h-14 pl-12 rounded-2xl border-slate-200 focus:ring-indigo-500 text-lg font-bold"
                 />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="date">Ngày {recordType === "check-in" ? "nhận" : "trả"} phòng *</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                />
-              </div>
+              <Button 
+                onClick={handleValidate} 
+                disabled={isValidating}
+                className="w-full h-12 bg-slate-800 hover:bg-black rounded-2xl transition-all"
+              >
+                {isValidating ? <Loader2 className="animate-spin" /> : "Kiểm tra Hợp đồng"}
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Ghi chú</Label>
-              <Textarea
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder={
-                  recordType === "check-in"
-                    ? "VD: Đã kiểm tra đầy đủ đồ dùng, phòng sạch sẽ..."
-                    : "VD: Phòng sạch sẽ, không hư hỏng..."
-                }
-                rows={3}
+            
+            <div className="space-y-3">
+              <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Bước 2: Ghi chú (nếu có)</label>
+              <Input 
+                placeholder="Tình trạng bàn giao..."
+                value={form.note} 
+                onChange={e => setForm({...form, note: e.target.value})} 
+                className="h-12 rounded-xl border-slate-100"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave}>
-              Xác nhận
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+          {/* Section 2: Info & Action */}
+          <div className="md:col-span-8 p-8 bg-slate-50/50 flex flex-col justify-center gap-8">
+            {studentInfo ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in zoom-in duration-300">
+                <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                        <div className="h-16 w-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-2xl font-black shadow-lg shadow-indigo-100">
+                            {studentInfo.fullName[0]}
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-800">{studentInfo.fullName}</h3>
+                            <p className="text-indigo-600 font-semibold">{studentInfo.roomName}</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Badge className="bg-white text-slate-600 border border-slate-200 px-3 py-1 rounded-lg shadow-sm">
+                            <ShieldCheck size={14} className="mr-1 text-emerald-500" /> Hợp đồng: {studentInfo.contractCode}
+                        </Badge>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-3 justify-center">
+                    <Button 
+                        disabled={loading || studentInfo.isCheckIn}
+                        onClick={() => handleAction("checkin")}
+                        className="h-14 bg-emerald-600 hover:bg-emerald-700 rounded-2xl shadow-xl shadow-emerald-100 font-bold text-lg"
+                    >
+                        {loading ? <Loader2 className="animate-spin mr-2" /> : <LogIn className="mr-2" />} XÁC NHẬN NHẬN PHÒNG
+                    </Button>
+                    <Button 
+                        disabled={loading || !studentInfo.isCheckIn}
+                        onClick={() => handleAction("checkout")}
+                        variant="destructive"
+                        className="h-14 rounded-2xl shadow-xl shadow-red-100 font-bold text-lg"
+                    >
+                        {loading ? <Loader2 className="animate-spin mr-2" /> : <LogOut className="mr-2" />} XÁC NHẬN TRẢ PHÒNG
+                    </Button>
+                    {studentInfo.isCheckIn ? (
+                        <p className="text-center text-xs text-amber-600 font-medium">Sinh viên hiện đang cư trú tại phòng.</p>
+                    ) : (
+                        <p className="text-center text-xs text-emerald-600 font-medium">Sinh viên đã ký hợp đồng, chờ nhận phòng.</p>
+                    )}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center space-y-4 py-10">
+                <div className="h-20 w-20 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <History size={32} className="text-slate-200" />
+                </div>
+                <p className="text-slate-400 font-medium">Nhập và Check MSSV để thực hiện lệnh điều phối</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {/* Nhật ký giao dịch */}
+      <div className="space-y-4">
+        <h3 className="font-bold text-slate-700 flex items-center gap-2 px-2">
+            <History size={18} /> Nhật ký giao dịch gần đây
+        </h3>
+        <Card className="border-none shadow-lg rounded-2xl overflow-hidden">
+            <Table>
+                <TableHeader className="bg-slate-50">
+                    <TableRow>
+                        <TableHead className="font-bold">Thời gian</TableHead>
+                        <TableHead className="font-bold">Sinh viên</TableHead>
+                        <TableHead className="font-bold">Phòng</TableHead>
+                        <TableHead className="font-bold text-center">Loại</TableHead>
+                        <TableHead className="font-bold">Ghi chú</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {history.map((x) => (
+                        <TableRow key={x.id}>
+                            <TableCell className="text-xs text-slate-500">
+                                {new Date(x.transactionDate).toLocaleString('vi-VN')}
+                            </TableCell>
+                            <TableCell className="font-bold">
+                              {x.studentName} 
+                              <span className="block text-[10px] text-slate-400 font-normal">{x.studentCode}</span>
+                            </TableCell>
+                            <TableCell><Badge variant="secondary" className="rounded-md">{x.roomName}</Badge></TableCell>
+                            <TableCell className="text-center">
+                                <Badge className={x.transactionType === "Check-in" ? "bg-emerald-100 text-emerald-700 border-none" : "bg-rose-100 text-rose-700 border-none"}>
+                                    {x.transactionType === "Check-in" ? "Vào phòng" : "Trả phòng"}
+                                </Badge>
+                            </TableCell>
+                            <TableCell className="text-slate-500 italic text-sm">{x.note || "-"}</TableCell>
+                        </TableRow>
+                    ))}
+                    {history.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-10 text-slate-400">Chưa có giao dịch nào</TableCell>
+                      </TableRow>
+                    )}
+                </TableBody>
+            </Table>
+        </Card>
+      </div>
     </div>
   );
 }

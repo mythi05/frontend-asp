@@ -1,505 +1,262 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "../ui/card";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Badge } from "../ui/badge";
-import { Textarea } from "../ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "../ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/table";
-import { Plus, Search, Eye, AlertTriangle } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
+import { 
+  Search, Plus, AlertOctagon, Loader2, Trash2, 
+  RefreshCcw, UserCircle, MapPin, Calendar, ClipboardCheck,
+  AlertTriangle, Hammer, ShieldAlert, CheckCircle2, Edit3, Settings2
+} from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest } from "../../api";
 
-interface Violation {
-  id: string;
-  studentId: string;
-  studentName: string;
-  room: string;
-  type: string;
-  description: string;
-  date: string;
-  severity: "low" | "medium" | "high";
-  penalty: number;
-  status: "pending" | "resolved" | "appealed";
-  resolvedDate?: string;
-  notes: string;
-}
+const LEVEL_MAP: any = {
+  1: { label: "Nhẹ", color: "bg-blue-50 text-blue-600 border-blue-100" },
+  2: { label: "Trung bình", color: "bg-amber-50 text-amber-600 border-amber-100" },
+  3: { label: "Nghiêm trọng", color: "bg-orange-50 text-orange-600 border-orange-100" },
+  4: { label: "Rất nghiêm trọng", color: "bg-red-50 text-red-600 border-red-100" }
+};
 
-const initialViolations: Violation[] = [
-  { id: "1", studentId: "SV001", studentName: "Nguyễn Văn A", room: "A101", type: "Gây ồn", description: "Gây ồn vào lúc 23h", date: "2026-03-15", severity: "low", penalty: 100000, status: "resolved", resolvedDate: "2026-03-16", notes: "Đã nhắc nhở" },
-  { id: "2", studentId: "SV003", studentName: "Lê Văn C", room: "A102", type: "Vệ sinh", description: "Không giữ vệ sinh phòng", date: "2026-03-18", severity: "medium", penalty: 200000, status: "pending", notes: "" },
-  { id: "3", studentId: "SV005", studentName: "Hoàng Văn E", room: "B202", type: "An ninh", description: "Để người lạ vào KTX", date: "2026-03-10", severity: "high", penalty: 500000, status: "resolved", resolvedDate: "2026-03-12", notes: "Đã xử lý kỷ luật" },
-  { id: "4", studentId: "SV002", studentName: "Trần Thị B", room: "B201", type: "Trật tự", description: "Vi phạm giờ giấc", date: "2026-03-19", severity: "low", penalty: 100000, status: "pending", notes: "" },
-];
+const STATUS_MAP: any = {
+  1: { label: "Đang chờ", color: "bg-slate-100 text-slate-600" },
+  2: { label: "Đã xử lý", color: "bg-emerald-100 text-emerald-700" }
+};
 
 export function ViolationsManagement() {
-  const [violations, setViolations] = useState<Violation[]>(initialViolations);
+  const [violations, setViolations] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
-  const [filterSeverity, setFilterSeverity] = useState<string>("all");
+  const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [selectedViolation, setSelectedViolation] = useState<Violation | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   const [formData, setFormData] = useState({
     studentId: "",
     studentName: "",
     room: "",
-    type: "",
-    description: "",
-    date: new Date().toISOString().split('T')[0],
-    severity: "low" as const,
-    penalty: "",
-    notes: "",
+    violationType: "",
+    violationDate: new Date().toISOString().split('T')[0],
+    level: 1,
+    fine: 0,
+    status: 1
   });
 
-  const filteredViolations = violations.filter((violation) => {
-    const matchesSearch = 
-      violation.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      violation.studentId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      violation.room.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === "all" || violation.status === filterStatus;
-    const matchesSeverity = filterSeverity === "all" || violation.severity === filterSeverity;
-    return matchesSearch && matchesStatus && matchesSeverity;
-  });
+  useEffect(() => { fetchViolations(); }, [searchTerm]);
 
-  const stats = {
-    total: violations.length,
-    pending: violations.filter(v => v.status === "pending").length,
-    resolved: violations.filter(v => v.status === "resolved").length,
-    high: violations.filter(v => v.severity === "high").length,
+  const fetchViolations = async () => {
+    setLoading(true);
+    try {
+      const data = await apiRequest<any[]>("/api/Violation");
+      // Filter tại FE nếu search API chưa hỗ trợ searchString
+      const filtered = data.filter(v => 
+        v.studentName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        v.studentId.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setViolations(filtered);
+    } catch (err) { toast.error("Lỗi tải dữ liệu"); }
+    finally { setLoading(false); }
   };
 
-  const handleAdd = () => {
+  const handleStudentIdChange = async (code: string) => {
+    setFormData(prev => ({ ...prev, studentId: code }));
+    if (code.length >= 5) {
+      setIsValidating(true);
+      try {
+        const student = await apiRequest<any>(`/api/Student/by-code/${code}`);
+        if (student) {
+          setFormData(prev => ({ ...prev, studentName: student.fullName, room: student.room?.roomName || "N/A" }));
+        }
+      } catch (err) { setFormData(prev => ({ ...prev, studentName: "", room: "" })); }
+      finally { setIsValidating(false); }
+    }
+  };
+
+  // Mở Dialog để sửa
+  const handleEdit = (v: any) => {
+    setEditingId(v.id);
     setFormData({
-      studentId: "",
-      studentName: "",
-      room: "",
-      type: "",
-      description: "",
-      date: new Date().toISOString().split('T')[0],
-      severity: "low",
-      penalty: "",
-      notes: "",
+      studentId: v.studentId,
+      studentName: v.studentName,
+      room: v.room,
+      violationType: v.violationType,
+      violationDate: v.violationDate.split('T')[0],
+      level: v.level,
+      fine: v.fine,
+      status: v.status
     });
     setDialogOpen(true);
   };
 
-  const handleView = (violation: Violation) => {
-    setSelectedViolation(violation);
-    setViewDialogOpen(true);
+  // Xử lý nhanh trạng thái (PUT)
+  const handleQuickProcess = async (v: any) => {
+    try {
+      const payload = { ...v, status: 2 }; // Chuyển sang Processed
+      await apiRequest(`/api/Violation/${v.id}`, { method: "PUT", body: JSON.stringify(payload) });
+      toast.success("Đã cập nhật trạng thái: Đã xử lý");
+      fetchViolations();
+    } catch (err) { toast.error("Không thể cập nhật trạng thái"); }
   };
 
-  const handleResolve = (id: string) => {
-    setViolations(violations.map((v) =>
-      v.id === id
-        ? { ...v, status: "resolved" as const, resolvedDate: new Date().toISOString().split('T')[0] }
-        : v
-    ));
-    toast.success("Đã xử lý vi phạm");
+  const handleSave = async () => {
+    setLoading(true);
+    try {
+      const payload = {
+        ...formData,
+        level: Number(formData.level),
+        fine: Number(formData.fine),
+        status: Number(formData.status),
+        violationDate: new Date(formData.violationDate).toISOString()
+      };
+
+      if (editingId) {
+        // CẬP NHẬT (PUT)
+        await apiRequest(`/api/Violation/${editingId}`, { 
+          method: "PUT", 
+          body: JSON.stringify({ ...payload, id: editingId }) 
+        });
+        toast.success("Cập nhật thành công!");
+      } else {
+        // TẠO MỚI (POST)
+        await apiRequest("/api/Violation", { method: "POST", body: JSON.stringify(payload) });
+        toast.success("Đã thêm biên bản mới!");
+      }
+
+      setDialogOpen(false);
+      setEditingId(null);
+      fetchViolations();
+      resetForm();
+    } catch (err: any) { toast.error("Lỗi dữ liệu. Vui lòng kiểm tra lại."); }
+    finally { setLoading(false); }
   };
 
-  const handleSave = () => {
-    if (!formData.studentId || !formData.studentName || !formData.type || !formData.description) {
-      toast.error("Vui lòng điền đầy đủ thông tin bắt buộc");
-      return;
-    }
-
-    const newViolation: Violation = {
-      id: Date.now().toString(),
-      studentId: formData.studentId,
-      studentName: formData.studentName,
-      room: formData.room,
-      type: formData.type,
-      description: formData.description,
-      date: formData.date,
-      severity: formData.severity,
-      penalty: parseInt(formData.penalty) || 0,
-      status: "pending",
-      notes: formData.notes,
-    };
-    setViolations([newViolation, ...violations]);
-    toast.success("Đã ghi nhận vi phạm mới");
-    setDialogOpen(false);
-  };
-
-  const getSeverityBadge = (severity: Violation["severity"]) => {
-    switch (severity) {
-      case "low":
-        return <Badge className="bg-yellow-100 text-yellow-800">Nhẹ</Badge>;
-      case "medium":
-        return <Badge className="bg-orange-100 text-orange-800">Trung bình</Badge>;
-      case "high":
-        return <Badge className="bg-red-100 text-red-800">Nghiêm trọng</Badge>;
-    }
-  };
-
-  const getStatusBadge = (status: Violation["status"]) => {
-    switch (status) {
-      case "pending":
-        return <Badge className="bg-blue-100 text-blue-800">Chưa xử lý</Badge>;
-      case "resolved":
-        return <Badge className="bg-green-100 text-green-800">Đã xử lý</Badge>;
-      case "appealed":
-        return <Badge className="bg-purple-100 text-purple-800">Khiếu nại</Badge>;
-    }
+  const resetForm = () => {
+    setFormData({
+      studentId: "", studentName: "", room: "", violationType: "",
+      violationDate: new Date().toISOString().split('T')[0],
+      level: 1, fine: 0, status: 1
+    });
+    setEditingId(null);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Quản lý vi phạm</h2>
-          <p className="text-gray-500 mt-1">Ghi nhận và xử lý vi phạm nội quy</p>
-        </div>
-        <Button onClick={handleAdd}>
-          <Plus className="h-4 w-4 mr-2" />
-          Ghi nhận vi phạm
+    <div className="space-y-6 p-6 bg-slate-50/50 min-h-screen">
+      <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-3">
+          <div className="p-2 bg-red-600 rounded-lg text-white"><ShieldAlert size={24} /></div>
+          Kỷ luật & Vi phạm
+        </h2>
+        <Button onClick={() => { resetForm(); setDialogOpen(true); }} className="bg-red-600">
+          <Plus className="mr-2" size={18} /> Lập biên bản mới
         </Button>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng vi phạm</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">{stats.total}</p>
-              </div>
-              <AlertTriangle className="h-8 w-8 text-gray-600" />
+      <Card className="border-none shadow-xl rounded-2xl bg-white overflow-hidden">
+        <div className="p-5 border-b flex gap-4">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                <Input className="pl-10 rounded-xl" placeholder="Tìm MSSV hoặc tên..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Chưa xử lý</p>
-                <p className="text-2xl font-semibold text-blue-600 mt-2">{stats.pending}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Đã xử lý</p>
-                <p className="text-2xl font-semibold text-green-600 mt-2">{stats.resolved}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Nghiêm trọng</p>
-                <p className="text-2xl font-semibold text-red-600 mt-2">{stats.high}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <Button variant="outline" onClick={fetchViolations} className="rounded-xl"><RefreshCcw size={18}/></Button>
+        </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative md:col-span-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Tìm kiếm sinh viên, phòng..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-              <SelectTrigger>
-                <SelectValue placeholder="Mức độ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả mức độ</SelectItem>
-                <SelectItem value="low">Nhẹ</SelectItem>
-                <SelectItem value="medium">Trung bình</SelectItem>
-                <SelectItem value="high">Nghiêm trọng</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Trạng thái" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tất cả</SelectItem>
-                <SelectItem value="pending">Chưa xử lý</SelectItem>
-                <SelectItem value="resolved">Đã xử lý</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Violations Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>MSSV</TableHead>
-                <TableHead>Sinh viên</TableHead>
-                <TableHead>Phòng</TableHead>
-                <TableHead>Loại vi phạm</TableHead>
-                <TableHead>Ngày</TableHead>
-                <TableHead>Mức độ</TableHead>
-                <TableHead>Phạt</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead className="text-right">Thao tác</TableHead>
+        <Table>
+          <TableHeader className="bg-slate-50">
+            <TableRow>
+              <TableHead className="pl-6">SINH VIÊN</TableHead>
+              <TableHead>VI PHẠM</TableHead>
+              <TableHead className="text-center">MỨC ĐỘ</TableHead>
+              <TableHead className="text-center">TRẠNG THÁI</TableHead>
+              <TableHead className="text-right pr-6">THAO TÁC</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {violations.map((v) => (
+              <TableRow key={v.id}>
+                <TableCell className="pl-6 font-medium">
+                    {v.studentName} <br/> <span className="text-xs text-slate-400">{v.studentId}</span>
+                </TableCell>
+                <TableCell className="max-w-xs truncate">{v.violationType}</TableCell>
+                <TableCell className="text-center">
+                    <Badge className={LEVEL_MAP[v.level]?.color}>{LEVEL_MAP[v.level]?.label}</Badge>
+                </TableCell>
+                <TableCell className="text-center">
+                    <Badge className={STATUS_MAP[v.status]?.color}>{STATUS_MAP[v.status]?.label}</Badge>
+                </TableCell>
+                <TableCell className="text-right pr-6 space-x-2">
+                  {v.status === 1 && (
+                    <Button variant="outline" size="sm" onClick={() => handleQuickProcess(v)} className="text-emerald-600 border-emerald-200">
+                        <CheckCircle2 size={14} className="mr-1"/> Xử lý
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(v)} className="text-blue-500"><Edit3 size={16}/></Button>
+                  <Button variant="ghost" size="icon" className="text-slate-300 hover:text-red-500"><Trash2 size={16}/></Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredViolations.map((violation) => (
-                <TableRow key={violation.id}>
-                  <TableCell className="font-medium">{violation.studentId}</TableCell>
-                  <TableCell>{violation.studentName}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{violation.room}</Badge>
-                  </TableCell>
-                  <TableCell>{violation.type}</TableCell>
-                  <TableCell>{new Date(violation.date).toLocaleDateString('vi-VN')}</TableCell>
-                  <TableCell>{getSeverityBadge(violation.severity)}</TableCell>
-                  <TableCell>{violation.penalty.toLocaleString()}đ</TableCell>
-                  <TableCell>{getStatusBadge(violation.status)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleView(violation)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      {violation.status === "pending" && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleResolve(violation.id)}
-                        >
-                          Xử lý
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
+            ))}
+          </TableBody>
+        </Table>
       </Card>
 
-      {/* Add Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-[600px]">
-          <DialogHeader>
-            <DialogTitle>Ghi nhận vi phạm mới</DialogTitle>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if(!open) setEditingId(null); }}>
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+          <DialogHeader className="p-6 bg-slate-900 text-white">
+            <DialogTitle className="flex items-center gap-3">
+              {editingId ? <Settings2 /> : <AlertOctagon />}
+              {editingId ? "Cập nhật biên bản vi phạm" : "Lập biên bản vi phạm mới"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="studentId">Mã sinh viên *</Label>
-                <Input
-                  id="studentId"
-                  value={formData.studentId}
-                  onChange={(e) => setFormData({ ...formData, studentId: e.target.value })}
-                  placeholder="VD: SV001"
-                />
+
+          <div className="p-8 grid grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <Label>Mã số sinh viên</Label>
+              <Input value={formData.studentId} onChange={e => handleStudentIdChange(e.target.value)} disabled={!!editingId} />
+              
+              <div className="p-4 bg-slate-50 rounded-xl space-y-2 text-sm">
+                <p><b>Họ tên:</b> {formData.studentName || "---"}</p>
+                <p><b>Phòng:</b> {formData.room || "---"}</p>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="studentName">Họ và tên *</Label>
-                <Input
-                  id="studentName"
-                  value={formData.studentName}
-                  onChange={(e) => setFormData({ ...formData, studentName: e.target.value })}
-                  placeholder="VD: Nguyễn Văn A"
-                />
-              </div>
+
+              <Label>Trạng thái xử lý</Label>
+              <select className="w-full h-11 border rounded-xl px-3" value={formData.status} onChange={e => setFormData({...formData, status: parseInt(e.target.value)})}>
+                <option value={1}>Đang chờ (Pending)</option>
+                <option value={2}>Đã xử lý (Processed)</option>
+              </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="room">Phòng</Label>
-                <Input
-                  id="room"
-                  value={formData.room}
-                  onChange={(e) => setFormData({ ...formData, room: e.target.value })}
-                  placeholder="VD: A101"
-                />
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Mức độ</Label>
+                  <select className="w-full h-10 border rounded-lg px-2" value={formData.level} onChange={e => setFormData({...formData, level: parseInt(e.target.value)})}>
+                    <option value={1}>Nhẹ</option>
+                    <option value={2}>Trung bình</option>
+                    <option value={3}>Nghiêm trọng</option>
+                    <option value={4}>Rất nghiêm trọng</option>
+                  </select>
+                </div>
+                <div>
+                  <Label>Tiền phạt</Label>
+                  <Input type="number" value={formData.fine} onChange={e => setFormData({...formData, fine: parseInt(e.target.value)})} />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="type">Loại vi phạm *</Label>
-                <Select
-                  value={formData.type}
-                  onValueChange={(value) => setFormData({ ...formData, type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Chọn loại" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Gây ồn">Gây ồn</SelectItem>
-                    <SelectItem value="Vệ sinh">Vệ sinh</SelectItem>
-                    <SelectItem value="An ninh">An ninh</SelectItem>
-                    <SelectItem value="Trật tự">Trật tự</SelectItem>
-                    <SelectItem value="Khác">Khác</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Mô tả vi phạm *</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Mô tả chi tiết về vi phạm..."
-                rows={3}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="date">Ngày vi phạm</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="severity">Mức độ</Label>
-                <Select
-                  value={formData.severity}
-                  onValueChange={(value: any) => setFormData({ ...formData, severity: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Mức độ" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Nhẹ</SelectItem>
-                    <SelectItem value="medium">Trung bình</SelectItem>
-                    <SelectItem value="high">Nghiêm trọng</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="penalty">Mức phạt (VNĐ)</Label>
-                <Input
-                  id="penalty"
-                  type="number"
-                  value={formData.penalty}
-                  onChange={(e) => setFormData({ ...formData, penalty: e.target.value })}
-                  placeholder="VD: 100000"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="notes">Ghi chú</Label>
-              <Input
-                id="notes"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Ghi chú thêm..."
-              />
+
+              <Label>Ngày vi phạm</Label>
+              <Input type="date" value={formData.violationDate} onChange={e => setFormData({...formData, violationDate: e.target.value})} />
+
+              <Label>Nội dung chi tiết</Label>
+              <textarea className="w-full h-24 border rounded-xl p-3 text-sm" value={formData.violationType} onChange={e => setFormData({...formData, violationType: e.target.value})} />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Hủy
-            </Button>
-            <Button onClick={handleSave}>Ghi nhận</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* View Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Chi tiết vi phạm</DialogTitle>
-          </DialogHeader>
-          {selectedViolation && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Sinh viên</p>
-                  <p className="font-medium">{selectedViolation.studentName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">MSSV</p>
-                  <p className="font-medium">{selectedViolation.studentId}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Phòng</p>
-                  <p className="font-medium">{selectedViolation.room}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Loại vi phạm</p>
-                  <p className="font-medium">{selectedViolation.type}</p>
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Mô tả</p>
-                <p className="font-medium">{selectedViolation.description}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Ngày vi phạm</p>
-                  <p className="font-medium">{new Date(selectedViolation.date).toLocaleDateString('vi-VN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Mức độ</p>
-                  {getSeverityBadge(selectedViolation.severity)}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Mức phạt</p>
-                  <p className="font-medium text-red-600">{selectedViolation.penalty.toLocaleString()}đ</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Trạng thái</p>
-                  {getStatusBadge(selectedViolation.status)}
-                </div>
-              </div>
-              {selectedViolation.notes && (
-                <div>
-                  <p className="text-sm text-gray-500">Ghi chú</p>
-                  <p className="font-medium">{selectedViolation.notes}</p>
-                </div>
-              )}
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setViewDialogOpen(false)}>Đóng</Button>
+          <DialogFooter className="p-6 bg-slate-50 border-t">
+            <Button variant="ghost" onClick={() => setDialogOpen(false)}>Hủy</Button>
+            <Button onClick={handleSave} className="bg-red-600 px-8">
+              {loading ? <Loader2 className="animate-spin" /> : "Lưu thay đổi"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

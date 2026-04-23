@@ -1,330 +1,164 @@
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { 
-  BarChart, 
-  Bar, 
-  LineChart, 
-  Line, 
-  PieChart, 
-  Pie, 
-  Cell, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  Legend, 
-  ResponsiveContainer 
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, 
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer 
 } from "recharts";
-import { Calendar, Download, TrendingUp } from "lucide-react";
-import { Button } from "../ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
-
-const revenueData = [
-  { month: "T9/2025", revenue: 820 },
-  { month: "T10/2025", revenue: 850 },
-  { month: "T11/2025", revenue: 830 },
-  { month: "T12/2025", revenue: 870 },
-  { month: "T1/2026", revenue: 845 },
-  { month: "T2/2026", revenue: 860 },
-  { month: "T3/2026", revenue: 850 },
-];
-
-const occupancyData = [
-  { month: "T9", rate: 85 },
-  { month: "T10", rate: 87 },
-  { month: "T11", rate: 86 },
-  { month: "T12", rate: 88 },
-  { month: "T1", rate: 89 },
-  { month: "T2", rate: 90 },
-  { month: "T3", rate: 90 },
-];
-
-const roomTypeData = [
-  { name: "Phòng 2 người", value: 20, color: "#3b82f6" },
-  { name: "Phòng 4 người", value: 70, color: "#10b981" },
-  { name: "Phòng 6 người", value: 30, color: "#f59e0b" },
-];
-
-const buildingData = [
-  { building: "Tòa A", occupied: 32, total: 40 },
-  { building: "Tòa B", occupied: 35, total: 40 },
-  { building: "Tòa C", occupied: 28, total: 40 },
-];
+import { Loader2, Users, Home, ShieldCheck, LayoutDashboard, RefreshCw } from "lucide-react";
+import { apiRequest } from "../../api";
+import { toast } from "sonner";
 
 export function Reports() {
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Báo cáo thống kê</h2>
-          <p className="text-gray-500 mt-1">Phân tích dữ liệu và xu hướng</p>
-        </div>
-        <div className="flex gap-3">
-          <Select defaultValue="2026">
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Chọn năm" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="2026">Năm 2026</SelectItem>
-              <SelectItem value="2025">Năm 2025</SelectItem>
-              <SelectItem value="2024">Năm 2024</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline">
-            <Download className="h-4 w-4 mr-2" />
-            Xuất báo cáo
-          </Button>
-        </div>
-      </div>
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any>({
+    totalStaff: 0,
+    totalRooms: 0,
+    totalStudents: 0,
+    roomDist: [], 
+    buildingDist: [],
+  });
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng phòng</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">120</p>
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +5 so với năm trước
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tổng sinh viên</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">287</p>
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +18 so với năm trước
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+  const fetchAllData = async () => {
+    setLoading(true);
+    try {
+      const [rooms, staff, students] = await Promise.all([
+        apiRequest<any[]>("/api/Room"),
+        apiRequest<any[]>("/api/Staff"),
+        apiRequest<any[]>("/api/Student")
+      ]);
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Tỷ lệ lấp đầy TB</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">87.5%</p>
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +2.5% so với năm trước
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      // 1. THỐNG KÊ THEO SỨC CHỨA (Dùng MaxCapacity từ Model của bạn)
+      const roomTypeMap: any = {};
+      
+      rooms?.forEach(r => {
+        // Sử dụng MaxCapacity thay vì capacity
+        const capacityLabel = r.maxCapacity ? `Phòng ${r.maxCapacity} người` : "Chưa xác định";
+        roomTypeMap[capacityLabel] = (roomTypeMap[capacityLabel] || 0) + 1;
+      });
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-500">Doanh thu TB/tháng</p>
-                <p className="text-2xl font-semibold text-gray-900 mt-2">850M</p>
-                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3" />
-                  +12% so với năm trước
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      const roomDistData = Object.keys(roomTypeMap).map(key => ({
+        name: key,
+        value: roomTypeMap[key]
+      })).sort((a, b) => a.name.localeCompare(b.name)); // Sắp xếp cho đẹp
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Revenue Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Doanh thu theo tháng (triệu VNĐ)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  name="Doanh thu"
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      // 2. THỐNG KÊ THEO TÒA (Dùng trường Building từ Model của bạn)
+      const buildingMap: any = {};
+      rooms?.forEach(r => {
+        const bName = r.building || "Khác";
+        buildingMap[bName] = (buildingMap[bName] || 0) + 1;
+      });
 
-        {/* Occupancy Rate Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tỷ lệ lấp đầy theo tháng (%)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={occupancyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="rate" fill="#10b981" name="Tỷ lệ lấp đầy" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
+      const buildingData = Object.keys(buildingMap).map(key => ({
+        name: key,
+        count: buildingMap[key]
+      }));
 
-        {/* Room Type Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Phân bố loại phòng</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={roomTypeData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {roomTypeData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-4 space-y-2">
-              {roomTypeData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                    <span>{item.name}</span>
-                  </div>
-                  <span className="font-medium">{item.value} phòng</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      setStats({
+        totalStaff: staff?.length || 0,
+        totalRooms: rooms?.length || 0,
+        totalStudents: students?.length || 0,
+        roomDist: roomDistData,
+        buildingDist: buildingData
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi đồng bộ dữ liệu");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        {/* Building Occupancy */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tình trạng theo tòa nhà</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={buildingData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="building" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="occupied" fill="#3b82f6" name="Đã sử dụng" />
-                <Bar dataKey="total" fill="#e5e7eb" name="Tổng số" />
-              </BarChart>
-            </ResponsiveContainer>
-            <div className="mt-4 space-y-3">
-              {buildingData.map((building) => (
-                <div key={building.building} className="space-y-1">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-medium">{building.building}</span>
-                    <span className="text-gray-600">
-                      {building.occupied}/{building.total} ({((building.occupied / building.total) * 100).toFixed(1)}%)
-                    </span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full"
-                      style={{ width: `${(building.occupied / building.total) * 100}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Detailed Statistics Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Thống kê chi tiết theo quý</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4">Quý</th>
-                  <th className="text-right py-3 px-4">Doanh thu (triệu)</th>
-                  <th className="text-right py-3 px-4">SV mới</th>
-                  <th className="text-right py-3 px-4">SV rời KTX</th>
-                  <th className="text-right py-3 px-4">Tỷ lệ lấp đầy</th>
-                  <th className="text-right py-3 px-4">Phòng bảo trì</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium">Quý 1/2026</td>
-                  <td className="text-right py-3 px-4">2,555</td>
-                  <td className="text-right py-3 px-4">35</td>
-                  <td className="text-right py-3 px-4">12</td>
-                  <td className="text-right py-3 px-4">89.7%</td>
-                  <td className="text-right py-3 px-4">3</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium">Quý 4/2025</td>
-                  <td className="text-right py-3 px-4">2,520</td>
-                  <td className="text-right py-3 px-4">28</td>
-                  <td className="text-right py-3 px-4">15</td>
-                  <td className="text-right py-3 px-4">87.3%</td>
-                  <td className="text-right py-3 px-4">5</td>
-                </tr>
-                <tr className="border-b">
-                  <td className="py-3 px-4 font-medium">Quý 3/2025</td>
-                  <td className="text-right py-3 px-4">2,500</td>
-                  <td className="text-right py-3 px-4">45</td>
-                  <td className="text-right py-3 px-4">8</td>
-                  <td className="text-right py-3 px-4">86.0%</td>
-                  <td className="text-right py-3 px-4">2</td>
-                </tr>
-                <tr>
-                  <td className="py-3 px-4 font-medium">Quý 2/2025</td>
-                  <td className="text-right py-3 px-4">2,450</td>
-                  <td className="text-right py-3 px-4">20</td>
-                  <td className="text-right py-3 px-4">25</td>
-                  <td className="text-right py-3 px-4">82.5%</td>
-                  <td className="text-right py-3 px-4">4</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+  if (loading) return (
+    <div className="h-[400px] flex items-center justify-center">
+      <Loader2 className="animate-spin text-blue-600" size={40} />
     </div>
+  );
+
+  return (
+    <div className="p-4 space-y-6 font-sans">
+      <div className="flex justify-between items-center">
+        <h1 className="text-xl font-bold flex items-center gap-2">
+          <LayoutDashboard className="text-blue-600" /> Báo cáo thực tế
+        </h1>
+        <button onClick={fetchAllData} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+          <RefreshCw size={18} />
+        </button>
+      </div>
+
+      {/* Chỉ số chính */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricCard title="Nhân viên" value={stats.totalStaff} icon={<ShieldCheck />} color="text-blue-600" />
+        <MetricCard title="Tổng số phòng" value={stats.totalRooms} icon={<Home />} color="text-green-600" />
+        <MetricCard title="Sinh viên" value={stats.totalStudents} icon={<Users />} color="text-orange-600" />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Biểu đồ Tròn: Sức chứa */}
+        <Card className="rounded-xl border border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-md font-semibold">Phân loại theo sức chứa (Giường)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stats.roomDist}
+                    innerRadius={60}
+                    outerRadius={90}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {stats.roomDist.map((entry: any, index: number) => (
+                      <Cell key={index} fill={["#4F46E5", "#10B981", "#F59E0B", "#EF4444"][index % 4]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend verticalAlign="bottom" />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Biểu đồ Cột: Tòa nhà */}
+        <Card className="rounded-xl border border-gray-200">
+          <CardHeader>
+            <CardTitle className="text-md font-semibold">Số lượng phòng theo Tòa</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.buildingDist}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                  <YAxis axisLine={false} tickLine={false} />
+                  <Tooltip cursor={{fill: '#f8fafc'}} />
+                  <Bar dataKey="count" fill="#4F46E5" radius={[4, 4, 0, 0]} barSize={40} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ title, value, icon, color }: any) {
+  return (
+    <Card className="rounded-xl border border-gray-200 shadow-sm">
+      <CardContent className="p-5 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">{title}</p>
+          <p className="text-2xl font-bold mt-1">{value}</p>
+        </div>
+        <div className={`p-3 rounded-lg bg-gray-50 ${color}`}>{icon}</div>
+      </CardContent>
+    </Card>
   );
 }
